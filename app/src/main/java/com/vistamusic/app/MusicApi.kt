@@ -45,11 +45,13 @@ class MusicApi {
     suspend fun trending(): List<Song> = withContext(Dispatchers.IO) {
         readAudius("tracks/trending?limit=40")
     }
-    // Apple Music public charts: metadata only. Full streaming is resolved through
-    // YouTube's visible embedded player, never through iTunes preview URLs.
-    suspend fun popular(): List<Song> = withContext(Dispatchers.IO) {
+    // Apple Music public charts: ranked music metadata (not Spotify charts). Audio
+    // comes from separate experimental sources and is not guaranteed to resolve.
+    suspend fun popular(market: String = "pt"): List<Song> = withContext(Dispatchers.IO) {
         val data = request(
-            "https://rss.applemarketingtools.com/api/v2/pt/music/most-played/45/songs.json"
+            "https://rss.applemarketingtools.com/api/v2/" +
+                (if (market in listOf("pt", "us", "br")) market else "pt") +
+                "/music/most-played/70/songs.json"
         ).optJSONObject("feed")?.optJSONArray("results") ?: JSONArray()
         (0 until data.length()).mapNotNull { i ->
             val j = data.optJSONObject(i) ?: return@mapNotNull null
@@ -111,8 +113,7 @@ class MusicApi {
                     }
                 }.getOrDefault(emptyList())
             }
-            // Return all results with video matches first, then popular-song metadata.
-            // Users can always access the official YouTube search page as a last resort.
+            // Mix music search and discovery, favoring tracks with playable streams.
             (videos.await() + itunes.await() + audius.await() + jamendo.await())
                 .distinctBy { it.id }
         }
