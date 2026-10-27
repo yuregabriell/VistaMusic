@@ -30,6 +30,7 @@ import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import coil.compose.AsyncImage
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import org.json.JSONArray
 import kotlin.math.roundToInt
 
@@ -63,6 +64,12 @@ private fun VistaMusic() {
     var tab by remember { mutableIntStateOf(0) }
     var query by remember { mutableStateOf("") }
     var trending by remember { mutableStateOf<List<Song>>(emptyList()) }
+    var popular by remember { mutableStateOf<List<Song>>(emptyList()) }
+    val scope = rememberCoroutineScope()
+    var youtubeApiKey by remember { mutableStateOf(prefs.getString("youtubeApiKey", "").orEmpty()) }
+    var videoId by remember { mutableStateOf<String?>(null) }
+    var videoQuery by remember { mutableStateOf<String?>(null) }
+    var videoBusy by remember { mutableStateOf(false) }
     var results by remember { mutableStateOf<List<Song>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var searching by remember { mutableStateOf(false) }
@@ -93,8 +100,36 @@ private fun VistaMusic() {
         if (songs.isEmpty() || index !in songs.indices) return
         queue = songs
         queueIndex = index
-        selected = songs[index]
-        player.setMediaItem(MediaItem.fromUri(songs[index].audio))
+        val song = songs[index]
+        selected = song
+        if (song.audio.startsWith("youtube:")) {
+            player.pause()
+            videoQuery = null
+            videoId = song.audio.removePrefix("youtube:")
+            return
+        }
+        if (song.audio.startsWith("discover:")) {
+            player.pause()
+            videoBusy = true
+            val lookFor = song.audio.removePrefix("discover:")
+            scope.launch {
+                val found = runCatching { YouTubeCatalog.search(lookFor, youtubeApiKey) }
+                    .getOrDefault(emptyList())
+                if (found.isNotEmpty()) {
+                    videoQuery = null
+                    videoId = found.first().audio.removePrefix("youtube:")
+                } else {
+                    // No key or discovery service offline: open YouTube's own search.
+                    videoId = null
+                    videoQuery = lookFor
+                }
+                videoBusy = false
+            }
+            return
+        }
+        videoId = null
+        videoQuery = null
+        player.setMediaItem(MediaItem.fromUri(song.audio))
         player.prepare()
         player.play()
     }
@@ -126,12 +161,16 @@ private fun VistaMusic() {
             .onFailure { message = "Não foi possível carregar o catálogo. Confirma a ligação à Internet." }
         loading = false
     }
-    LaunchedEffect(query, tab, jamendo, previews) {
+    LaunchedEffect(Unit) {
+        runCatching { api.popular() }
+            .onSuccess { popular = it }
+    }
+    LaunchedEffect(query, tab, jamendo, previews, youtubeApiKey) {
         if (tab != 1) return@LaunchedEffect
         if (query.isBlank()) { results = emptyList(); searching = false; return@LaunchedEffect }
         searching = true
         delay(450)
-        runCatching { api.search(query, jamendo, previews) }
+        runCatching { api.search(query, jamendo, previews, youtubeApiKey) }
             .onSuccess { results = it; message = "" }
             .onFailure { results = emptyList(); message = "Pesquisa indisponível neste momento." }
         searching = false
@@ -199,7 +238,43 @@ private fun VistaMusic() {
                             }
                         }
                     }
-                    item { TitleLine("Em alta agora") }
+                    item { TitleLine("Hits populares em Portugal") }
+                    if (popular.isNotEmpty()) {
+                        item {
+                            LazyRow(
+                                contentPadding = PaddingValues(horizontal = 19.dp),
+                                horizontalArrangement = Arrangement.spacedBy(13.dp)
+                            ) {
+                                items(popular.take(20)) { song ->
+                                    Column(Modifier.width(142.dp).clickable {
+                                        playSongs(popular, popular.indexOf(song))
+                                    }) {
+                                        Art(song, Modifier.size(142.dp)
+                                            .clip(RoundedCornerShape(16.dp)))
+                                        Spacer(Modifier.height(8.dp))
+                                        Text(song.title, color = White, fontSize = 13.sp,
+                                            fontWeight = FontWeight.Bold, maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis)
+                                        Text(song.artist, color = Fog, fontSize = 11.sp,
+                                            maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    item { TitleLine("Explora artistas populares") }
+                    item {
+                        LazyRow(contentPadding = PaddingValues(horizontal = 19.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            items(listOf("Justin Bieber", "Ariana Grande", "The Weeknd",
+                                "Taylor Swift", "Billie Eilish", "Bruno Mars",
+                                "Dua Lipa", "Bad Bunny", "Sabrina Carpenter", "Drake")) { artist ->
+                                SuggestionChip(onClick = { query = artist; tab = 1 },
+                                    label = { Text(artist) })
+                            }
+                        }
+                    }
+                    item { TitleLine("Em alta no Audius") }
                     if (loading) {
                         item { CircularProgressIndicator(Modifier.padding(30.dp), color = Lime) }
                     } else if (trending.isEmpty()) {
@@ -263,6 +338,11 @@ private fun VistaMusic() {
                             modifier = Modifier.padding(22.dp))
                     }
                     LazyColumn(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                        item {
+                            Text("Vídeos oficiais, catálogo popular e fontes independentes",
+                                color = Fog, fontSize = 12.sp,
+                                modifier = Modifier.padding(horizontal = 22.dp, vertical = 8.dp))
+                        }
                         items(results) { song ->
                             SongRow(song, favorites.any { it.id == song.id },
                                 { playSongs(results, results.indexOf(song)) },
@@ -271,6 +351,16 @@ private fun VistaMusic() {
                                     else favorites.add(0, song)
                                     saveFavorites()
                                 })
+                        }
+                        if (query.isNotBlank()) item {
+                            OutlinedButton(
+                                onClick = { player.pause(); videoId = null; videoQuery = query },
+                                modifier = Modifier.padding(horizontal = 19.dp, vertical = 12.dp)
+                            ) {
+                                Icon(Icons.Default.OpenInNew, null)
+                                Spacer(Modifier.width(8.dp))
+                                Text("Procurar diretamente no YouTube")
+                            }
                         }
                     }
                 }
@@ -295,6 +385,20 @@ private fun VistaMusic() {
                     Text("Fontes musicais", color = Lime, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(10.dp))
                     Text("Audius: músicas completas (ativo)", color = White)
+                    Spacer(Modifier.height(8.dp))
+                    Text("YouTube: vídeos oficiais e hits populares", color = White)
+                    Spacer(Modifier.height(6.dp))
+                    Text("Pesquisa experimental sem chave; os vídeos são reproduzidos no player oficial e podem ter anúncios.",
+                        color = Fog, fontSize = 12.sp)
+                    Spacer(Modifier.height(10.dp))
+                    Text("Chave opcional da YouTube Data API", color = Fog, fontSize = 12.sp)
+                    OutlinedTextField(
+                        value = youtubeApiKey, onValueChange = {
+                            youtubeApiKey = it.trim()
+                            prefs.edit().putString("youtubeApiKey", youtubeApiKey).apply()
+                        },
+                        singleLine = true, modifier = Modifier.fillMaxWidth(),
+                        placeholder = { Text("YouTube Data API v3 (opcional)") })
                     Spacer(Modifier.height(18.dp))
                     Text("Jamendo: introduz o teu Client ID gratuito", color = Fog, fontSize = 12.sp)
                     OutlinedTextField(
@@ -314,11 +418,12 @@ private fun VistaMusic() {
                         })
                     }
                     Spacer(Modifier.height(18.dp))
-                    Text("Versão 0.1.0 experimental", color = Fog, fontSize = 12.sp)
+                    Text("Versão 0.2.0 experimental", color = Fog, fontSize = 12.sp)
                 }
             }
         }
-        if (selected != null) {
+        if (selected != null && selected?.audio?.startsWith("youtube:") != true &&
+            selected?.audio?.startsWith("discover:") != true) {
             val current = selected!!
             Column(
                 Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp)
@@ -367,6 +472,18 @@ private fun VistaMusic() {
                 )
             }
         }
+    }
+    if (videoBusy) {
+        AlertDialog(onDismissRequest = {}, title = { Text("A encontrar a música…") },
+            text = { Row(verticalAlignment = Alignment.CenterVertically) {
+                CircularProgressIndicator(modifier = Modifier.size(28.dp))
+                Spacer(Modifier.width(14.dp))
+                Text("A procurar um vídeo reproduzível")
+            } }, confirmButton = {})
+    }
+    if (videoId != null || videoQuery != null) {
+        YouTubeViewer(videoId = videoId, searchQuery = videoQuery,
+            onClose = { videoId = null; videoQuery = null })
     }
 }
 
