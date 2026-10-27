@@ -53,6 +53,7 @@ private fun VistaMusicApp() {
     val prefs = remember { context.getSharedPreferences("vistamusic", android.content.Context.MODE_PRIVATE) }
     val music = remember { MusicApi() }
     val catalog = remember { LibraryCatalog() }
+    val taste = remember { LocalTaste(prefs) }
     val player = remember { ExoPlayer.Builder(context).build() }
     val scope = rememberCoroutineScope()
 
@@ -61,6 +62,15 @@ private fun VistaMusicApp() {
     var searchResults by remember { mutableStateOf<List<Song>>(emptyList()) }
     var suggestions by remember { mutableStateOf<ArtistInfo?>(null) }
     var featured by remember { mutableStateOf<List<Song>>(emptyList()) }
+    var globalHits by remember { mutableStateOf<List<Song>>(emptyList()) }
+    var albumResults by remember { mutableStateOf<List<AlbumInfo>>(emptyList()) }
+    var searchArtistPhoto by remember { mutableStateOf("") }
+    var selectedGenre by remember { mutableStateOf<String?>(null) }
+    var historyVersion by remember { mutableIntStateOf(0) }
+    var lastLoggedId by remember { mutableStateOf("") }
+    var recommending by remember { mutableStateOf(false) }
+    var autoDj by remember { mutableStateOf(prefs.getBoolean("auto_dj", true)) }
+    var bufferedMs by remember { mutableLongStateOf(0L) }
     var independent by remember { mutableStateOf<List<Song>>(emptyList()) }
     var nowPlaying by remember { mutableStateOf<Song?>(null) }
     var queue by remember { mutableStateOf<List<Song>>(emptyList()) }
@@ -79,6 +89,8 @@ private fun VistaMusicApp() {
     var artistInfo by remember { mutableStateOf<ArtistInfo?>(null) }
     var artistBio by remember { mutableStateOf<ArtistBio?>(null) }
     var artistSongs by remember { mutableStateOf<List<Song>>(emptyList()) }
+    var artistTopSongs by remember { mutableStateOf<List<Song>>(emptyList()) }
+    var artistAllOpen by remember { mutableStateOf(false) }
     var artistAlbums by remember { mutableStateOf<List<AlbumInfo>>(emptyList()) }
     var artistLoading by remember { mutableStateOf(false) }
 
@@ -123,6 +135,7 @@ private fun VistaMusicApp() {
     fun openArtist(name: String) {
         artistPage = name
         artistInfo = null; artistBio = null; artistSongs = emptyList(); artistAlbums = emptyList()
+        artistTopSongs = emptyList(); artistAllOpen = false
         albumPage = null; songPage = null
         playerOpen = false; lyricsOpen = false
     }
@@ -144,6 +157,7 @@ private fun VistaMusicApp() {
         queue = list
         queueIndex = index
         nowPlaying = song
+        lastLoggedId = ""
         loadingAudio = false
         playbackError = ""
         player.stop(); player.clearMediaItems()
@@ -179,13 +193,30 @@ private fun VistaMusicApp() {
         }
     }
     fun nextSong() {
+        val current = nowPlaying
+        if (current != null && durationMs > 0L && positionMs < durationMs - 15000L) {
+            taste.add(current, "skip")
+            historyVersion++
+        }
         if (queue.isEmpty()) return
-        val next = if (shuffle && queue.size > 1)
+        val next = if (shuffle && queue.size > 1) {
             (queue.indices.filter { it != queueIndex }).random()
-        else if (queueIndex + 1 < queue.size) queueIndex + 1
-        else if (repeat) 0
-        else return
-        playSongs(queue, next)
+        } else if (queueIndex + 1 < queue.size) queueIndex + 1
+        else if (repeat) 0 else -1
+        if (next >= 0) { playSongs(queue, next); return }
+        if (!autoDj || recommending || current == null) return
+        recommending = true
+        scope.launch {
+            try {
+                val charts = (globalHits + featured).distinctBy { it.id }
+                val suggestions = taste.nextSongs(current, queue.map { it.id }.toSet(),
+                    favorites.toList(), charts, catalog)
+                if (suggestions.isNotEmpty() && nowPlaying?.id == current.id) {
+                    val expanded = queue + suggestions
+                    playSongs(expanded, queue.size)
+                }
+            } finally { recommending = false }
+        }
     }
     fun previousSong() {
         if (positionMs > 3500L) { player.seekTo(0); return }
@@ -201,6 +232,7 @@ private fun VistaMusicApp() {
     fun goBack() {
         when {
             lyricsOpen -> lyricsOpen = false
+            artistAllOpen -> artistAllOpen = false
             playerOpen -> playerOpen = false
             songPage != null -> songPage = null
             albumPage != null -> albumPage = null
@@ -208,7 +240,7 @@ private fun VistaMusicApp() {
             tab != 0 -> tab = 0
         }
     }
-    BackHandler(enabled = lyricsOpen || playerOpen || songPage != null ||
+    BackHandler(enabled = artistAllOpen || lyricsOpen || playerOpen || songPage != null ||
         albumPage != null || artistPage != null || tab != 0) { goBack() }
 
     DisposableEffect(player) {
@@ -219,7 +251,10 @@ private fun VistaMusicApp() {
                 loadingAudio = false
             }
             override fun onPlaybackStateChanged(state: Int) {
-                if (state == Player.STATE_ENDED) nextSong()
+                if (state == Player.STATE_ENDED) {
+                nowPlaying?.let { taste.add(it, "complete"); historyVersion++ }
+                nextSong()
+            }
             }
         }
         player.addListener(listener)
@@ -230,23 +265,45 @@ private fun VistaMusicApp() {
             delay(360)
             positionMs = player.currentPosition.coerceAtLeast(0L)
             durationMs = player.duration.takeIf { it > 0L } ?: 0L
+            bufferedMs = player.bufferedPosition.coerceAtLeast(0L)
         }
     }
     LaunchedEffect(Unit) {
-        runCatching { music.popular() }.onSuccess { featured = it }
+        runCatching { music.popular("us") }.onSuccess { globalHits = it }
+        runCatching { music.popular("pt") }.onSuccess { featured = it }
         runCatching { music.trending() }.onSuccess { independent = it }
+    }
+    LaunchedEffect(nowPlaying?.id, isPlaying) {
+        val track = nowPlaying
+        if (isPlaying && track != null && lastLoggedId != track.id) {
+            lastLoggedId = track.id
+            taste.add(track, "play")
+            historyVersion++
+        }
+    }
+    val forYou = remember(historyVersion, globalHits, featured, independent, favorites.size) {
+        taste.rankedForYou((globalHits + featured + independent), favorites.toList())
     }
     LaunchedEffect(query, tab, jamendoId, includePreviews) {
         if (tab != 1 || query.isBlank()) {
-            if (query.isBlank()) { searchResults = emptyList(); suggestions = null }
+            if (query.isBlank()) {
+                searchResults = emptyList(); suggestions = null
+                albumResults = emptyList(); searchArtistPhoto = ""
+            }
             return@LaunchedEffect
         }
         delay(480)
         runCatching { music.search(query, jamendoId, includePreviews, "") }
             .onSuccess { searchResults = it }.onFailure { searchResults = emptyList() }
+        albumResults = runCatching { catalog.searchAlbums(query) }.getOrDefault(emptyList())
         if (query.length >= 3) {
             suggestions = runCatching { catalog.artist(query) }.getOrNull()
-        }
+        } else suggestions = null
+    }
+    LaunchedEffect(suggestions?.name) {
+        searchArtistPhoto = suggestions?.name?.let {
+            runCatching { ArtistBiography.fetch(it)?.photo }.getOrNull()
+        }.orEmpty()
     }
     LaunchedEffect(artistPage) {
         val name = artistPage ?: return@LaunchedEffect
@@ -256,6 +313,8 @@ private fun VistaMusicApp() {
         artistSongs = runCatching { catalog.artistSongs(name, artistInfo?.id ?: 0L) }
             .getOrDefault(emptyList())
         artistAlbums = runCatching { catalog.artistAlbums(name, artistInfo?.id ?: 0L) }
+            .getOrDefault(emptyList())
+        artistTopSongs = runCatching { catalog.topArtistSongs(name, artistSongs) }
             .getOrDefault(emptyList())
         artistLoading = false
     }
@@ -314,16 +373,21 @@ private fun VistaMusicApp() {
                     onLyrics = { val s = songPage!!; playSongs(listOf(s), 0); playerOpen = true; lyricsOpen = true },
                     isFavorite = isFavorite(songPage!!),
                     onFavorite = { toggleFavorite(songPage!!) })
+                artistAllOpen && artistPage != null -> VmAllArtistSongsPage(
+                    name = artistPage!!, songs = artistSongs, onBack = { artistAllOpen = false },
+                    onPlay = { playSongs(artistSongs, artistSongs.indexOf(it)); playerOpen = true },
+                    onSong = ::openSong, isFavorite = ::isFavorite, onFavorite = ::toggleFavorite)
                 albumPage != null -> VmAlbumPage(albumPage!!, albumSongs, albumLoading,
                     onBack = { albumPage = null }, onArtist = ::openArtist,
                     onPlay = { playSongs(albumSongs, albumSongs.indexOf(it)); playerOpen = true },
                     onSong = ::openSong, isFavorite = ::isFavorite, onFavorite = ::toggleFavorite)
                 artistPage != null -> VmArtistPage(
-                    name = artistPage!!, info = artistInfo, bio = artistBio, songs = artistSongs, albums = artistAlbums,
+                    name = artistPage!!, info = artistInfo, bio = artistBio, songs = artistSongs,
+                    topSongs = artistTopSongs, albums = artistAlbums,
                     loading = artistLoading, followed = followed.contains(artistPage),
                     onFollow = { toggleFollow(artistPage!!) }, onBack = { artistPage = null },
                     onPlay = { playSongs(artistSongs, artistSongs.indexOf(it)); playerOpen = true },
-                    onSong = ::openSong, onAlbum = ::openAlbum,
+                    onSong = ::openSong, onAlbum = ::openAlbum, onAllSongs = { artistAllOpen = true },
                     isFavorite = ::isFavorite, onFavorite = ::toggleFavorite)
                 else -> Column(Modifier.fillMaxSize()) {
                     Row(Modifier.fillMaxWidth().padding(start = 19.dp, end = 13.dp, top = 21.dp, bottom = 23.dp),
@@ -548,8 +612,9 @@ private fun VistaMusicApp() {
             }
         }
         if (!lyricsOpen && !playerOpen && nowPlaying != null) {
-            VmMiniPlayer(nowPlaying!!, isPlaying, loadingAudio, { playerOpen = true },
-                ::togglePlayback, ::nextSong)
+            VmMiniPlayer(nowPlaying!!, isPlaying, loadingAudio,
+                positionMs, durationMs, bufferedMs, { playerOpen = true },
+                ::previousSong, ::togglePlayback, ::nextSong)
         }
         if (!lyricsOpen && !playerOpen && artistPage == null && albumPage == null && songPage == null) {
             NavigationBar(containerColor = VmBackground) {
