@@ -45,7 +45,7 @@ object LyricsApi {
                     if (j == null || j.optBoolean("instrumental")) continue
                     val synced = j.optString("syncedLyrics").takeIf { it != "null" && it.isNotBlank() }
                     if (synced != null) {
-                        val matcher = Regex("""^\\[(\\d{2}):(\\d{2})(?:\\.(\\d{1,3}))?]\\s*(.*)$""")
+                        val matcher = Regex("""^\[(\d{2}):(\d{2})(?:\.(\d{1,3}))?]\s*(.*)$""")
                         val lines = synced.lines().mapNotNull { raw ->
                             val m = matcher.matchEntire(raw.trim()) ?: return@mapNotNull null
                             val minutes = m.groupValues[1].toLongOrNull() ?: 0L
