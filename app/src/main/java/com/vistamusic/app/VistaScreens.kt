@@ -108,14 +108,14 @@ fun VmBackBar(title: String, onBack: () -> Unit) {
 @Composable
 fun VmArtistPage(
     name: String, info: ArtistInfo?, bio: ArtistBio?, songs: List<Song>,
-    topSongs: List<Song>, albums: List<AlbumInfo>,
+    topSongs: List<Song>, isTopSampled: Boolean, albums: List<AlbumInfo>,
     loading: Boolean, followed: Boolean, onFollow: () -> Unit, onBack: () -> Unit,
     onPlay: (Song) -> Unit, onSong: (Song) -> Unit,
     onAlbum: (AlbumInfo) -> Unit, onAllSongs: () -> Unit,
     isFavorite: (Song) -> Boolean, onFavorite: (Song) -> Unit
 ) {
-    val realTop = topSongs.isNotEmpty()
-    val highlighted = if (realTop) topSongs.take(5) else songs.take(5)
+    val realTop = isTopSampled && topSongs.size >= 5
+    val highlighted = topSongs.take(10).ifEmpty { songs.take(10) }
     Column(Modifier.fillMaxSize().background(VmBackground)) {
         VmBackBar("Artista", onBack)
         LazyColumn(contentPadding = PaddingValues(bottom = 30.dp)) {
@@ -159,8 +159,11 @@ fun VmArtistPage(
             }
             if (highlighted.isNotEmpty()) {
                 item {
-                    VmHeading(if (realTop) "Mais populares" else "Músicas em destaque",
+                    VmHeading(if (realTop) "Mais vistas no YouTube" else "Músicas em destaque",
                         Modifier.padding(start = 20.dp, top = 20.dp, bottom = 10.dp))
+                    if (realTop) Text("Seleção por visualizações dos vídeos encontrados",
+                        color = VmMuted, fontSize = 11.sp,
+                        modifier = Modifier.padding(start = 20.dp, bottom = 6.dp))
                 }
                 items(highlighted.size) { index ->
                     val song = highlighted[index]
