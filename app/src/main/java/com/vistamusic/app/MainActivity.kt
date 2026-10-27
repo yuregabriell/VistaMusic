@@ -232,8 +232,8 @@ private fun VistaMusicApp() {
     fun goBack() {
         when {
             lyricsOpen -> lyricsOpen = false
-            artistAllOpen -> artistAllOpen = false
             playerOpen -> playerOpen = false
+            artistAllOpen -> artistAllOpen = false
             songPage != null -> songPage = null
             albumPage != null -> albumPage = null
             artistPage != null -> artistPage = null
@@ -473,7 +473,7 @@ private fun VistaMusicApp() {
                                         horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                                         items(globalHits.take(25)) { song ->
                                             Column(Modifier.width(145.dp).clickable {
-                                                playSongs(globalHits, globalHits.indexOf(song))
+                                                playSongs(listOf(song), 0)
                                                 playerOpen = true
                                             }) {
                                                 VmArt(song.art, Modifier.size(145.dp))
@@ -501,7 +501,7 @@ private fun VistaMusicApp() {
                                     horizontalArrangement = Arrangement.spacedBy(13.dp)) {
                                     items(featured.take(20)) { song ->
                                         Column(Modifier.width(145.dp).clickable {
-                                            playSongs(featured, featured.indexOf(song))
+                                            playSongs(listOf(song), 0)
                                             playerOpen = true
                                         }) {
                                             VmArt(song.art, Modifier.size(145.dp))
@@ -529,7 +529,7 @@ private fun VistaMusicApp() {
                             }
                             items(independent.take(18)) { song ->
                                 VmSongRow(song, isFavorite(song),
-                                    { playSongs(independent, independent.indexOf(song)) },
+                                    { playSongs(listOf(song), 0) },
                                     { openSong(song) }, { toggleFavorite(song) })
                             }
                         }
@@ -610,7 +610,7 @@ private fun VistaMusicApp() {
                                     }
                                     items(searchResults) { song ->
                                         VmSongRow(song, isFavorite(song),
-                                            { playSongs(searchResults, searchResults.indexOf(song)) },
+                                            { playSongs(listOf(song), 0) },
                                             { openSong(song) }, { toggleFavorite(song) })
                                     }
                                     if (searchResults.isEmpty() && albumResults.isEmpty() &&
