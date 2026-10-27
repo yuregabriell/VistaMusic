@@ -29,6 +29,9 @@ import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import org.json.JSONArray
 
 class MainActivity : ComponentActivity() {
@@ -284,7 +287,7 @@ private fun VistaMusicApp() {
     val forYou = remember(historyVersion, globalHits, featured, independent, favorites.size) {
         taste.rankedForYou((globalHits + featured + independent), favorites.toList())
     }
-    LaunchedEffect(query, tab, jamendoId, includePreviews) {
+    LaunchedEffect(query, tab, jamendoId, includePreviews, selectedGenre) {
         if (tab != 1 || query.isBlank()) {
             if (query.isBlank()) {
                 searchResults = emptyList(); suggestions = null
@@ -293,6 +296,24 @@ private fun VistaMusicApp() {
             return@LaunchedEffect
         }
         delay(480)
+        val genre = selectedGenre
+        if (genre != null) {
+            val artists = Genres.artists(genre)
+            val catalogTracks = coroutineScope {
+                artists.map { name ->
+                    async { runCatching { catalog.artistSongs(name, 0L) }
+                        .getOrDefault(emptyList()).take(12) }
+                }.awaitAll()
+            }
+            val interleaved = mutableListOf<Song>()
+            for (i in 0 until 12) {
+                for (list in catalogTracks) if (i < list.size) interleaved.add(list[i])
+            }
+            searchResults = interleaved.distinctBy { it.id }
+            suggestions = null
+            albumResults = emptyList()
+            return@LaunchedEffect
+        }
         runCatching { music.search(query, jamendoId, includePreviews, "") }
             .onSuccess { searchResults = it }.onFailure { searchResults = emptyList() }
         albumResults = runCatching { catalog.searchAlbums(query) }.getOrDefault(emptyList())
@@ -573,6 +594,19 @@ private fun VistaMusicApp() {
                                             }
                                         }
                                     }
+                                    if (selectedGenre != null) {
+                                        item {
+                                            VmHeading("Artistas para descobrir",
+                                                Modifier.padding(start = 20.dp, top = 10.dp, bottom = 10.dp))
+                                            LazyRow(contentPadding = PaddingValues(horizontal = 20.dp),
+                                                horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                                                items(Genres.artists(selectedGenre!!)) { name ->
+                                                    SuggestionChip(onClick = { openArtist(name) },
+                                                        label = { Text(name) })
+                                                }
+                                            }
+                                        }
+                                    }
                                     suggestions?.let { artist ->
                                         item {
                                             VmHeading("Artista", Modifier.padding(start = 20.dp,
@@ -605,8 +639,8 @@ private fun VistaMusicApp() {
                                         }
                                     }
                                     if (searchResults.isNotEmpty()) item {
-                                        VmHeading("Músicas", Modifier.padding(start = 20.dp,
-                                            top = 24.dp, bottom = 11.dp))
+                                        VmHeading(if (selectedGenre != null) "Seleção do género" else "Músicas",
+                                            Modifier.padding(start = 20.dp, top = 24.dp, bottom = 11.dp))
                                     }
                                     items(searchResults) { song ->
                                         VmSongRow(song, isFavorite(song),
