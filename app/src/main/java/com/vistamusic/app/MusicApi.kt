@@ -1,6 +1,8 @@
 package com.vistamusic.app
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -33,7 +35,7 @@ class MusicApi {
         connection.connectTimeout = 12000
         connection.readTimeout = 12000
         connection.setRequestProperty("Accept", "application/json")
-        connection.setRequestProperty("User-Agent", "VistaMusic/0.1")
+        connection.setRequestProperty("User-Agent", "VistaMusic/0.2")
         try {
             if (connection.responseCode !in 200..299)
                 throw IllegalStateException("HTTP " + connection.responseCode)
@@ -43,37 +45,76 @@ class MusicApi {
     suspend fun trending(): List<Song> = withContext(Dispatchers.IO) {
         readAudius("tracks/trending?limit=40")
     }
-    suspend fun search(query: String, jamendoClientId: String, includePreviews: Boolean): List<Song> =
-        withContext(Dispatchers.IO) {
-            if (query.isBlank()) return@withContext emptyList()
-            val all = mutableListOf<Song>()
-            runCatching { readAudius("tracks/search?query=" + enc(query) + "&limit=35") }
-                .onSuccess { all.addAll(it) }
-            if (jamendoClientId.isNotBlank()) runCatching {
-                val url = "https://api.jamendo.com/v3.0/tracks/?client_id=" +
-                    enc(jamendoClientId) + "&format=json&limit=20&search=" + enc(query)
-                val arr = request(url).optJSONArray("results") ?: JSONArray()
-                for (i in 0 until arr.length()) {
-                    val j = arr.optJSONObject(i) ?: continue
-                    val audio = j.optString("audio")
-                    if (audio.startsWith("https")) all.add(Song("jamendo:" + j.optString("id"),
-                        j.optString("name"), j.optString("artist_name"), j.optString("image"),
-                        audio, "Jamendo"))
-                }
+    // Apple Music public charts: metadata only. Full streaming is resolved through
+    // YouTube's visible embedded player, never through iTunes preview URLs.
+    suspend fun popular(): List<Song> = withContext(Dispatchers.IO) {
+        val data = request(
+            "https://rss.applemarketingtools.com/api/v2/pt/music/most-played/45/songs.json"
+        ).optJSONObject("feed")?.optJSONArray("results") ?: JSONArray()
+        (0 until data.length()).mapNotNull { i ->
+            val j = data.optJSONObject(i) ?: return@mapNotNull null
+            val title = j.optString("name")
+            val artist = j.optString("artistName")
+            if (title.isBlank() || artist.isBlank()) return@mapNotNull null
+            val image = j.optString("artworkUrl100")
+                .replace("100x100bb", "600x600bb")
+            Song("chart:" + j.optString("id"), title, artist, image,
+                "discover:" + title + " " + artist + " official music",
+                "Hits populares")
+        }
+    }
+
+    suspend fun search(query: String, jamendoClientId: String,
+        includePreviews: Boolean, youtubeApiKey: String): List<Song> =
+        coroutineScope {
+            if (query.isBlank()) return@coroutineScope emptyList()
+            val videos = async(Dispatchers.IO) {
+                runCatching { YouTubeCatalog.search(query, youtubeApiKey) }
+                    .getOrDefault(emptyList())
             }
-            if (includePreviews) runCatching {
-                val arr = request("https://itunes.apple.com/search?term=" + enc(query) +
-                    "&entity=song&limit=12").optJSONArray("results") ?: JSONArray()
-                for (i in 0 until arr.length()) {
-                    val j = arr.optJSONObject(i) ?: continue
-                    val audio = j.optString("previewUrl")
-                    if (audio.startsWith("https")) all.add(Song("itunes:" + j.optString("trackId"),
-                        j.optString("trackName"), j.optString("artistName"),
-                        j.optString("artworkUrl100").replace("100x100bb", "600x600bb"),
-                        audio, "iTunes · prévia"))
-                }
+            val itunes = async(Dispatchers.IO) {
+                runCatching {
+                    val data = request("https://itunes.apple.com/search?term=" +
+                        enc(query) + "&entity=song&limit=35&country=PT")
+                        .optJSONArray("results") ?: JSONArray()
+                    (0 until data.length()).mapNotNull { i ->
+                        val j = data.optJSONObject(i) ?: return@mapNotNull null
+                        val name = j.optString("trackName")
+                        val artist = j.optString("artistName")
+                        if (name.isBlank() || artist.isBlank()) return@mapNotNull null
+                        val preview = j.optString("previewUrl")
+                        Song("catalog:" + j.optString("trackId"),
+                            name, artist,
+                            j.optString("artworkUrl100").replace("100x100bb", "600x600bb"),
+                            if (includePreviews && preview.startsWith("https")) preview
+                            else "discover:" + name + " " + artist + " official music",
+                            if (includePreviews && preview.startsWith("https")) "iTunes · prévia"
+                            else "Catálogo popular")
+                    }
+                }.getOrDefault(emptyList())
             }
-            all.distinctBy { it.id }
+            val audius = async(Dispatchers.IO) {
+                runCatching { readAudius("tracks/search?query=" + enc(query) + "&limit=25") }
+                    .getOrDefault(emptyList())
+            }
+            val jamendo = async(Dispatchers.IO) {
+                if (jamendoClientId.isBlank()) emptyList() else runCatching {
+                    val url = "https://api.jamendo.com/v3.0/tracks/?client_id=" +
+                        enc(jamendoClientId) + "&format=json&limit=20&search=" + enc(query)
+                    val arr = request(url).optJSONArray("results") ?: JSONArray()
+                    (0 until arr.length()).mapNotNull { i ->
+                        val j = arr.optJSONObject(i) ?: return@mapNotNull null
+                        val audio = j.optString("audio")
+                        if (!audio.startsWith("https")) return@mapNotNull null
+                        Song("jamendo:" + j.optString("id"), j.optString("name"),
+                            j.optString("artist_name"), j.optString("image"), audio, "Jamendo")
+                    }
+                }.getOrDefault(emptyList())
+            }
+            // Return all results with video matches first, then popular-song metadata.
+            // Users can always access the official YouTube search page as a last resort.
+            (videos.await() + itunes.await() + audius.await() + jamendo.await())
+                .distinctBy { it.id }
         }
     private fun readAudius(endpoint: String): List<Song> {
         val array = request("https://api.audius.co/v1/" + endpoint)
