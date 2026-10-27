@@ -107,36 +107,46 @@ fun VmBackBar(title: String, onBack: () -> Unit) {
 
 @Composable
 fun VmArtistPage(
-    name: String, info: ArtistInfo?, bio: ArtistBio?, songs: List<Song>, albums: List<AlbumInfo>,
+    name: String, info: ArtistInfo?, bio: ArtistBio?, songs: List<Song>,
+    topSongs: List<Song>, albums: List<AlbumInfo>,
     loading: Boolean, followed: Boolean, onFollow: () -> Unit, onBack: () -> Unit,
     onPlay: (Song) -> Unit, onSong: (Song) -> Unit,
-    onAlbum: (AlbumInfo) -> Unit, isFavorite: (Song) -> Boolean,
-    onFavorite: (Song) -> Unit
+    onAlbum: (AlbumInfo) -> Unit, onAllSongs: () -> Unit,
+    isFavorite: (Song) -> Boolean, onFavorite: (Song) -> Unit
 ) {
+    val realTop = topSongs.isNotEmpty()
+    val highlighted = if (realTop) topSongs.take(5) else songs.take(5)
     Column(Modifier.fillMaxSize().background(VmBackground)) {
         VmBackBar("Artista", onBack)
-        LazyColumn(contentPadding = PaddingValues(bottom = 26.dp)) {
+        LazyColumn(contentPadding = PaddingValues(bottom = 30.dp)) {
             item {
-                Box(Modifier.fillMaxWidth().height(270.dp).background(
-                    Brush.verticalGradient(listOf(Color(0xFF36594E), VmBackground)))) {
-                    val cover = bio?.photo?.takeIf { it.isNotBlank() } ?: songs.firstOrNull()?.art ?: albums.firstOrNull()?.art.orEmpty()
-                    VmArt(cover, Modifier.size(196.dp).align(Alignment.Center), circular = true)
+                val portrait = bio?.photo.orEmpty()
+                val header = bio?.banner?.takeIf { it.isNotBlank() } ?: portrait
+                Box(Modifier.fillMaxWidth().height(280.dp).background(
+                    Brush.verticalGradient(listOf(Color(0xFF34534A), VmBackground)))) {
+                    if (header.isNotBlank()) {
+                        AsyncImage(model = header, contentDescription = name,
+                            contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                    }
+                    Box(Modifier.fillMaxSize().background(Brush.verticalGradient(
+                        listOf(Color(0x44090B0E), Color(0x11090B0E), VmBackground))))
+                    Text(name, color = VmWhite, fontSize = 35.sp,
+                        fontWeight = FontWeight.ExtraBold, lineHeight = 40.sp,
+                        modifier = Modifier.align(Alignment.BottomStart).padding(
+                            start = 22.dp, end = 18.dp, bottom = 22.dp))
                 }
-                Column(Modifier.padding(horizontal = 20.dp)) {
-                    Text(name, color = VmWhite, fontSize = 34.sp,
-                        fontWeight = FontWeight.ExtraBold, lineHeight = 37.sp)
+                Column(Modifier.padding(horizontal = 20.dp, vertical = 12.dp)) {
                     if (!info?.genre.isNullOrBlank()) {
-                        Spacer(Modifier.height(6.dp))
                         Text(info?.genre.orEmpty(), color = VmMuted, fontSize = 13.sp)
                     }
-                    Spacer(Modifier.height(19.dp))
+                    Spacer(Modifier.height(18.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         OutlinedButton(onClick = onFollow, shape = RoundedCornerShape(50)) {
                             Text(if (followed) "A seguir" else "Seguir")
                         }
                         Spacer(Modifier.weight(1f))
-                        IconButton(onClick = { songs.firstOrNull()?.let(onPlay) },
-                            enabled = songs.isNotEmpty(),
+                        IconButton(onClick = { highlighted.firstOrNull()?.let(onPlay) },
+                            enabled = highlighted.isNotEmpty(),
                             modifier = Modifier.size(59.dp).background(VmAccent, CircleShape)) {
                             Icon(Icons.Default.PlayArrow, "Reproduzir artista",
                                 tint = VmBackground, modifier = Modifier.size(33.dp))
@@ -144,32 +154,46 @@ fun VmArtistPage(
                     }
                 }
             }
-            if (loading) item { Text("A carregar discografia…", color = VmMuted,
-                modifier = Modifier.padding(22.dp)) }
-            if (songs.isNotEmpty()) {
-                item { VmHeading("Músicas", Modifier.padding(start = 20.dp, top = 24.dp, bottom = 10.dp)) }
-                items(songs.take(15)) { song ->
+            if (loading) item {
+                Text("A carregar discografia…", color = VmMuted, modifier = Modifier.padding(22.dp))
+            }
+            if (highlighted.isNotEmpty()) {
+                item {
+                    VmHeading(if (realTop) "Mais populares" else "Músicas em destaque",
+                        Modifier.padding(start = 20.dp, top = 20.dp, bottom = 10.dp))
+                }
+                items(highlighted.size) { index ->
+                    val song = highlighted[index]
                     VmSongRow(song, isFavorite(song), { onPlay(song) },
-                        { onSong(song) }, { onFavorite(song) })
+                        { onSong(song) }, { onFavorite(song) }, if (realTop) index + 1 else null)
                 }
             }
             if (albums.isNotEmpty()) {
-                item { VmHeading("Álbuns e singles", Modifier.padding(start = 20.dp, top = 26.dp, bottom = 14.dp)) }
+                item {
+                    VmHeading("Álbuns e singles", Modifier.padding(start = 20.dp, top = 26.dp, bottom = 14.dp))
+                }
                 item {
                     LazyRow(contentPadding = PaddingValues(horizontal = 20.dp),
                         horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                        items(albums) { album ->
-                            VmAlbumTile(album, onClick = { onAlbum(album) })
-                        }
+                        items(albums) { album -> VmAlbumTile(album) { onAlbum(album) } }
+                    }
+                }
+            }
+            if (songs.isNotEmpty()) {
+                item {
+                    OutlinedButton(onClick = onAllSongs,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 18.dp),
+                        shape = RoundedCornerShape(18.dp)) {
+                        Text("Ver todas as músicas de $name")
+                        Spacer(Modifier.width(8.dp))
+                        Icon(Icons.Default.ChevronRight, null)
                     }
                 }
             }
             if (bio != null && bio.summary.isNotBlank()) item {
-                Spacer(Modifier.height(23.dp))
-                VmHeading("Sobre o artista", Modifier.padding(horizontal = 20.dp))
+                VmHeading("Sobre o artista", Modifier.padding(start = 20.dp, top = 19.dp))
                 Column(Modifier.fillMaxWidth().padding(18.dp)
-                    .clip(RoundedCornerShape(22.dp)).background(VmCard)
-                    .padding(19.dp)) {
+                    .clip(RoundedCornerShape(22.dp)).background(VmCard).padding(19.dp)) {
                     Text(bio.summary, color = VmWhite.copy(alpha = .86f),
                         fontSize = 14.sp, lineHeight = 21.sp)
                     Spacer(Modifier.height(12.dp))
@@ -177,10 +201,41 @@ fun VmArtistPage(
                 }
             }
             if (!loading && songs.isEmpty() && albums.isEmpty()) item {
-                Text("Ainda não há lançamentos disponíveis neste catálogo.",
+                Text("Não há lançamentos disponíveis neste catálogo.",
                     color = VmMuted, modifier = Modifier.padding(20.dp))
             }
         }
+    }
+}
+
+@Composable
+fun VmAllArtistSongsPage(name: String, songs: List<Song>, onBack: () -> Unit,
+    onPlay: (Song) -> Unit, onSong: (Song) -> Unit,
+    isFavorite: (Song) -> Boolean, onFavorite: (Song) -> Unit) {
+    Column(Modifier.fillMaxSize().background(VmBackground)) {
+        VmBackBar(name, onBack)
+        LazyColumn(contentPadding = PaddingValues(bottom = 22.dp)) {
+            item {
+                VmHeading("Todas as músicas", Modifier.padding(start = 20.dp, top = 14.dp, bottom = 14.dp))
+                Text("${songs.size} faixas disponíveis", color = VmMuted,
+                    modifier = Modifier.padding(start = 20.dp, bottom = 12.dp))
+            }
+            items(songs) { song ->
+                VmSongRow(song, isFavorite(song), { onPlay(song) }, { onSong(song) },
+                    { onFavorite(song) })
+            }
+        }
+    }
+}
+
+@Composable
+fun VmArtistAvatar(url: String, modifier: Modifier = Modifier) {
+    Box(modifier.clip(CircleShape).background(Color(0xFF29473F)),
+        contentAlignment = Alignment.Center) {
+        Icon(Icons.Default.Person, "Artista", tint = VmAccent,
+            modifier = Modifier.size(33.dp))
+        if (url.isNotBlank()) AsyncImage(model = url, contentDescription = "Fotografia do artista",
+            contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
     }
 }
 
@@ -318,35 +373,49 @@ fun VmTrackPage(song: Song, info: SongInfo?, lyrics: LyricSheet?,
 
 @Composable
 fun VmMiniPlayer(song: Song, playing: Boolean, loading: Boolean,
-                 onOpen: () -> Unit, onPlayPause: () -> Unit, onNext: () -> Unit) {
-    Row(Modifier.fillMaxWidth().padding(horizontal = 9.dp, vertical = 4.dp)
-        .clip(RoundedCornerShape(18.dp)).background(VmCard)
-        .clickable(onClick = onOpen).padding(9.dp),
-        verticalAlignment = Alignment.CenterVertically) {
-        VmArt(song.art, Modifier.size(48.dp))
-        Spacer(Modifier.width(11.dp))
-        Column(Modifier.weight(1f)) {
-            Text(LyricsApi.cleanTitle(song.title, song.artist), color = VmWhite,
-                maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 13.sp,
-                fontWeight = FontWeight.Bold)
-            Text(song.artist, color = VmMuted, maxLines = 1, fontSize = 12.sp)
-        }
-        if (loading) {
-            CircularProgressIndicator(modifier = Modifier.size(22.dp), color = VmAccent,
-                strokeWidth = 2.dp)
-            Spacer(Modifier.width(14.dp))
-        } else {
-            IconButton(onClick = onPlayPause, modifier = Modifier.size(43.dp)) {
-                Icon(if (playing) Icons.Default.Pause else Icons.Default.PlayArrow,
-                    "Reproduzir ou pausar", tint = VmWhite, modifier = Modifier.size(28.dp))
+    position: Long, duration: Long, buffered: Long,
+    onOpen: () -> Unit, onPrevious: () -> Unit,
+    onPlayPause: () -> Unit, onNext: () -> Unit) {
+    val progress = if (duration > 0) (position.toFloat() / duration).coerceIn(0f, 1f) else 0f
+    val buffer = if (duration > 0) (buffered.toFloat() / duration).coerceIn(0f, 1f) else 0f
+    Column(Modifier.fillMaxWidth().padding(horizontal = 9.dp, vertical = 4.dp)
+        .clip(RoundedCornerShape(18.dp)).background(VmCard)) {
+        Row(Modifier.fillMaxWidth().clickable(onClick = onOpen).padding(8.dp),
+            verticalAlignment = Alignment.CenterVertically) {
+            VmArt(song.art, Modifier.size(44.dp))
+            Spacer(Modifier.width(9.dp))
+            Column(Modifier.weight(1f)) {
+                Text(LyricsApi.cleanTitle(song.title, song.artist), color = VmWhite,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold)
+                Text(song.artist, color = VmMuted, maxLines = 1, fontSize = 11.sp)
+            }
+            IconButton(onClick = onPrevious, modifier = Modifier.size(33.dp)) {
+                Icon(Icons.Default.SkipPrevious, "Anterior", tint = VmWhite,
+                    modifier = Modifier.size(27.dp))
+            }
+            IconButton(onClick = onPlayPause, modifier = Modifier.size(38.dp),
+                enabled = !loading) {
+                if (loading) CircularProgressIndicator(Modifier.size(21.dp), color = VmAccent,
+                    strokeWidth = 2.dp)
+                else Icon(if (playing) Icons.Default.Pause else Icons.Default.PlayArrow,
+                    "Reproduzir ou pausar", tint = VmWhite, modifier = Modifier.size(27.dp))
+            }
+            IconButton(onClick = onNext, modifier = Modifier.size(33.dp)) {
+                Icon(Icons.Default.SkipNext, "Próxima", tint = VmAccent,
+                    modifier = Modifier.size(27.dp))
             }
         }
-        IconButton(onClick = onNext, modifier = Modifier.size(40.dp)) {
-            Icon(Icons.Default.SkipNext, "Próxima faixa", tint = VmAccent)
+        Box(Modifier.fillMaxWidth().height(3.dp).background(Color(0xFF41474A))) {
+            Box(Modifier.fillMaxWidth(buffer).fillMaxHeight()
+                .background(Color(0xFF888F90)))
+            Box(Modifier.fillMaxWidth(progress).fillMaxHeight()
+                .background(VmAccent))
         }
     }
 }
 
+@Composable
 private fun clock(ms: Long): String {
     if (ms <= 0) return "0:00"
     val seconds = ms / 1000
