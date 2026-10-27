@@ -68,7 +68,15 @@ private fun VistaMusicApp() {
     var globalHits by remember { mutableStateOf<List<Song>>(emptyList()) }
     var albumResults by remember { mutableStateOf<List<AlbumInfo>>(emptyList()) }
     var searchArtistPhoto by remember { mutableStateOf("") }
-    var selectedGenre by remember { mutableStateOf<String?>(null) }
+    var genrePage by remember { mutableStateOf<GenreCategory?>(null) }
+    var genreSongs by remember { mutableStateOf<List<Song>>(emptyList()) }
+    var genreAlbums by remember { mutableStateOf<List<AlbumInfo>>(emptyList()) }
+    var genrePhotos by remember { mutableStateOf<Map<String,String>>(emptyMap()) }
+    var genreLoading by remember { mutableStateOf(false) }
+    var ytTrendingPt by remember { mutableStateOf<List<Song>>(emptyList()) }
+    var ytTrendingUs by remember { mutableStateOf<List<Song>>(emptyList()) }
+    var artistTopFromYoutube by remember { mutableStateOf(false) }
+    var youtubeRadio by remember { mutableStateOf<List<Song>>(emptyList()) }
     var historyVersion by remember { mutableIntStateOf(0) }
     var lastLoggedId by remember { mutableStateOf("") }
     var recommending by remember { mutableStateOf(false) }
@@ -211,12 +219,18 @@ private fun VistaMusicApp() {
         recommending = true
         scope.launch {
             try {
-                val charts = (globalHits + featured).distinctBy { it.id }
-                val suggestions = taste.nextSongs(current, queue.map { it.id }.toSet(),
-                    favorites.toList(), charts, catalog)
-                if (suggestions.isNotEmpty() && nowPlaying?.id == current.id) {
-                    val expanded = queue + suggestions
-                    playSongs(expanded, queue.size)
+                val chartPool = (ytTrendingPt + ytTrendingUs + globalHits + featured)
+                    .distinctBy { it.id }
+                val related = if (current.audio.startsWith("youtube:"))
+                    runCatching { NativeMusic.relatedTo(current.audio.removePrefix("youtube:")) }
+                        .getOrDefault(emptyList())
+                    else emptyList()
+                val candidates = taste.nextSongs(current, queue.map { it.id }.toSet(),
+                    favorites.toList(), chartPool, catalog)
+                val next = (related + candidates).distinctBy { it.id }
+                    .filterNot { song -> queue.any { it.id == song.id } }
+                if (next.isNotEmpty() && nowPlaying?.id == current.id) {
+                    playSongs(queue + next.take(18), queue.size)
                 }
             } finally { recommending = false }
         }
@@ -237,13 +251,14 @@ private fun VistaMusicApp() {
             lyricsOpen -> lyricsOpen = false
             playerOpen -> playerOpen = false
             artistAllOpen -> artistAllOpen = false
+            genrePage != null -> genrePage = null
             songPage != null -> songPage = null
             albumPage != null -> albumPage = null
             artistPage != null -> artistPage = null
             tab != 0 -> tab = 0
         }
     }
-    BackHandler(enabled = artistAllOpen || lyricsOpen || playerOpen || songPage != null ||
+    BackHandler(enabled = genrePage != null || artistAllOpen || lyricsOpen || playerOpen || songPage != null ||
         albumPage != null || artistPage != null || tab != 0) { goBack() }
 
     DisposableEffect(player) {
@@ -272,9 +287,16 @@ private fun VistaMusicApp() {
         }
     }
     LaunchedEffect(Unit) {
-        runCatching { music.popular("us") }.onSuccess { globalHits = it }
-        runCatching { music.popular("pt") }.onSuccess { featured = it }
-        runCatching { music.trending() }.onSuccess { independent = it }
+        coroutineScope {
+            val u = async { runCatching { NativeMusic.trending("US") }.getOrDefault(emptyList()) }
+            val p = async { runCatching { NativeMusic.trending("PT") }.getOrDefault(emptyList()) }
+            val au = async { runCatching { music.popular("us") }.getOrDefault(emptyList()) }
+            val ap = async { runCatching { music.popular("pt") }.getOrDefault(emptyList()) }
+            val ind = async { runCatching { music.trending() }.getOrDefault(emptyList()) }
+            ytTrendingUs = u.await(); ytTrendingPt = p.await()
+            globalHits = au.await(); featured = ap.await()
+            independent = ind.await()
+        }
     }
     LaunchedEffect(nowPlaying?.id, isPlaying) {
         val track = nowPlaying
@@ -284,10 +306,51 @@ private fun VistaMusicApp() {
             historyVersion++
         }
     }
-    val forYou = remember(historyVersion, globalHits, featured, independent, favorites.size) {
-        taste.rankedForYou((globalHits + featured + independent), favorites.toList())
+    val forYou = remember(historyVersion, ytTrendingPt, ytTrendingUs, youtubeRadio,
+        globalHits, featured, independent, favorites.size) {
+        taste.rankedForYou(
+            (youtubeRadio + ytTrendingPt + ytTrendingUs + globalHits + featured + independent),
+            favorites.toList())
     }
-    LaunchedEffect(query, tab, jamendoId, includePreviews, selectedGenre) {
+    LaunchedEffect(historyVersion) {
+        val seed = taste.recentlyListened().firstOrNull() ?: favorites.firstOrNull()
+        if (seed != null && youtubeRadio.none { it.artist.equals(seed.artist, true) }) {
+            youtubeRadio = runCatching { NativeMusic.search(seed.artist + " popular songs") }
+                .getOrDefault(emptyList())
+        }
+    }
+    LaunchedEffect(genrePage?.title) {
+        val genre = genrePage ?: return@LaunchedEffect
+        genreLoading = true
+        genreSongs = emptyList(); genreAlbums = emptyList(); genrePhotos = emptyMap()
+        val artists = Genres.artists(genre.title)
+        coroutineScope {
+            val yt = async { runCatching {
+                NativeMusic.search(genre.title + " music official audio")
+            }.getOrDefault(emptyList()) }
+            val lists = artists.map { name -> async {
+                runCatching { catalog.artistSongs(name, 0L) }
+                    .getOrDefault(emptyList()).take(12)
+            } }
+            val albums = artists.take(3).map { name -> async {
+                runCatching { catalog.artistAlbums(name, 0L) }
+                    .getOrDefault(emptyList()).take(8)
+            } }
+            val photos = artists.map { name -> async {
+                name to runCatching { ArtistBiography.fetch(name)?.photo }.getOrNull().orEmpty()
+            } }
+            val batches = lists.map { it.await() }
+            val mixed = mutableListOf<Song>()
+            for (i in 0 until 12) for (batch in batches) if (i < batch.size) mixed.add(batch[i])
+            genreSongs = (yt.await().take(12) + mixed)
+                .distinctBy { it.title.lowercase() + "|" + it.artist.lowercase() }
+                .take(60)
+            genreAlbums = albums.flatMap { it.await() }.distinctBy { it.id }
+            genrePhotos = photos.map { it.await() }.toMap()
+        }
+        genreLoading = false
+    }
+    LaunchedEffect(query, tab, jamendoId, includePreviews) {
         if (tab != 1 || query.isBlank()) {
             if (query.isBlank()) {
                 searchResults = emptyList(); suggestions = null
@@ -295,31 +358,19 @@ private fun VistaMusicApp() {
             }
             return@LaunchedEffect
         }
-        delay(480)
-        val genre = selectedGenre
-        if (genre != null) {
-            val artists = Genres.artists(genre)
-            val catalogTracks = coroutineScope {
-                artists.map { name ->
-                    async { runCatching { catalog.artistSongs(name, 0L) }
-                        .getOrDefault(emptyList()).take(12) }
-                }.awaitAll()
+        delay(440)
+        coroutineScope {
+            val mus = async { runCatching {
+                music.search(query, jamendoId, includePreviews, "")
+            }.getOrDefault(emptyList()) }
+            val albums = async { runCatching { catalog.searchAlbums(query) }.getOrDefault(emptyList()) }
+            val artist = async {
+                if (query.length >= 3) runCatching { catalog.artist(query) }.getOrNull()
+                else null
             }
-            val interleaved = mutableListOf<Song>()
-            for (i in 0 until 12) {
-                for (list in catalogTracks) if (i < list.size) interleaved.add(list[i])
-            }
-            searchResults = interleaved.distinctBy { it.id }
-            suggestions = null
-            albumResults = emptyList()
-            return@LaunchedEffect
+            searchResults = mus.await(); albumResults = albums.await()
+            suggestions = artist.await()
         }
-        runCatching { music.search(query, jamendoId, includePreviews, "") }
-            .onSuccess { searchResults = it }.onFailure { searchResults = emptyList() }
-        albumResults = runCatching { catalog.searchAlbums(query) }.getOrDefault(emptyList())
-        if (query.length >= 3) {
-            suggestions = runCatching { catalog.artist(query) }.getOrNull()
-        } else suggestions = null
     }
     LaunchedEffect(suggestions?.name) {
         searchArtistPhoto = suggestions?.name?.let {
@@ -335,8 +386,15 @@ private fun VistaMusicApp() {
             .getOrDefault(emptyList())
         artistAlbums = runCatching { catalog.artistAlbums(name, artistInfo?.id ?: 0L) }
             .getOrDefault(emptyList())
-        artistTopSongs = runCatching { catalog.topArtistSongs(name, artistSongs) }
+        val rankedYoutube = runCatching { NativeMusic.popularArtist(name) }
+            .getOrDefault(emptyList()).filter { it.views > 0 }
+        artistTopFromYoutube = rankedYoutube.size >= 5
+        val verified = rankedYoutube.map { it.song }
+        val audioDb = runCatching { catalog.topArtistSongs(name, artistSongs) }
             .getOrDefault(emptyList())
+        artistTopSongs = (verified + audioDb + artistSongs)
+            .distinctBy { LyricsApi.cleanTitle(it.title, name).lowercase().trim() }
+            .take(10)
         artistLoading = false
     }
     LaunchedEffect(albumPage?.id) {
@@ -398,13 +456,23 @@ private fun VistaMusicApp() {
                     name = artistPage!!, songs = artistSongs, onBack = { artistAllOpen = false },
                     onPlay = { playSongs(artistSongs, artistSongs.indexOf(it)); playerOpen = true },
                     onSong = ::openSong, isFavorite = ::isFavorite, onFavorite = ::toggleFavorite)
+                genrePage != null -> VmGenrePage(
+                    genre = genrePage!!, songs = genreSongs, albums = genreAlbums,
+                    artistPhotos = genrePhotos, loading = genreLoading,
+                    onBack = { genrePage = null },
+                    onArtist = { name -> genrePage = null; openArtist(name) },
+                    onAlbum = { album -> genrePage = null; openAlbum(album) },
+                    onPlay = { song -> playSongs(listOf(song), 0); playerOpen = true },
+                    onSong = { song -> genrePage = null; openSong(song) },
+                    isFavorite = ::isFavorite, onFavorite = ::toggleFavorite)
                 albumPage != null -> VmAlbumPage(albumPage!!, albumSongs, albumLoading,
                     onBack = { albumPage = null }, onArtist = ::openArtist,
                     onPlay = { playSongs(albumSongs, albumSongs.indexOf(it)); playerOpen = true },
                     onSong = ::openSong, isFavorite = ::isFavorite, onFavorite = ::toggleFavorite)
                 artistPage != null -> VmArtistPage(
                     name = artistPage!!, info = artistInfo, bio = artistBio, songs = artistSongs,
-                    topSongs = artistTopSongs, albums = artistAlbums,
+                    topSongs = artistTopSongs, isTopSampled = artistTopFromYoutube,
+                    albums = artistAlbums,
                     loading = artistLoading, followed = followed.contains(artistPage),
                     onFollow = { toggleFollow(artistPage!!) }, onBack = { artistPage = null },
                     onPlay = { playSongs(artistSongs, artistSongs.indexOf(it)); playerOpen = true },
@@ -436,8 +504,9 @@ private fun VistaMusicApp() {
                                     .background(Brush.linearGradient(listOf(Color(0xFF204A42),
                                         Color(0xFF363A50), Color(0xFF232C2D))))
                                     .clickable {
-                                        if (globalHits.isNotEmpty()) {
-                                            playSongs(globalHits, 0); playerOpen = true
+                                        val list = ytTrendingPt.ifEmpty { featured }
+                                        if (list.isNotEmpty()) {
+                                            playSongs(list, 0); playerOpen = true
                                         }
                                     }.padding(20.dp)) {
                                     Column(Modifier.align(Alignment.CenterStart)
@@ -449,7 +518,7 @@ private fun VistaMusicApp() {
                                             color = VmWhite, fontWeight = FontWeight.ExtraBold,
                                             fontSize = 25.sp, lineHeight = 30.sp)
                                     }
-                                    globalHits.firstOrNull()?.let { song ->
+                                    (ytTrendingPt.firstOrNull() ?: featured.firstOrNull())?.let { song ->
                                         VmArt(song.art, Modifier.size(96.dp)
                                             .align(Alignment.CenterEnd))
                                     }
@@ -484,15 +553,18 @@ private fun VistaMusicApp() {
                             }
                             item {
                                 VmHeading("Em alta agora", Modifier.padding(start = 20.dp, bottom = 6.dp))
-                                Text("Top Apple Music · Estados Unidos",
+                                Text(if (ytTrendingPt.isNotEmpty())
+                                        "YouTube Charts · Portugal · vídeos em tendência"
+                                    else "Apple Music · Portugal · dados alternativos",
                                     color = VmMuted, fontSize = 12.sp,
                                     modifier = Modifier.padding(start = 20.dp, bottom = 13.dp))
                             }
-                            if (globalHits.isNotEmpty()) {
+                            val mainTrending = ytTrendingPt.ifEmpty { featured }
+                            if (mainTrending.isNotEmpty()) {
                                 item {
                                     LazyRow(contentPadding = PaddingValues(horizontal = 20.dp),
                                         horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                                        items(globalHits.take(25)) { song ->
+                                        items(mainTrending.take(25)) { song ->
                                             Column(Modifier.width(145.dp).clickable {
                                                 playSongs(listOf(song), 0)
                                                 playerOpen = true
@@ -515,12 +587,14 @@ private fun VistaMusicApp() {
                             item {
                                 Spacer(Modifier.height(26.dp))
                                 VmHeading("Em alta em Portugal", Modifier.padding(start = 20.dp, bottom = 6.dp))
-                                Text("Top Apple Music · Portugal",
+                                Text(if (ytTrendingUs.isNotEmpty())
+                                        "YouTube Charts · Estados Unidos · tendências"
+                                    else "Apple Music · Estados Unidos · dados alternativos",
                                     color = VmMuted, fontSize = 12.sp,
                                     modifier = Modifier.padding(start = 20.dp, bottom = 12.dp))
                                 LazyRow(contentPadding = PaddingValues(horizontal = 20.dp),
                                     horizontalArrangement = Arrangement.spacedBy(13.dp)) {
-                                    items(featured.take(20)) { song ->
+                                    items(ytTrendingUs.ifEmpty { globalHits }.take(20)) { song ->
                                         Column(Modifier.width(145.dp).clickable {
                                             playSongs(listOf(song), 0)
                                             playerOpen = true
@@ -540,9 +614,8 @@ private fun VistaMusicApp() {
                                 LazyRow(contentPadding = PaddingValues(horizontal = 20.dp),
                                     horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                     items(Genres.categories.take(12)) { g ->
-                                        SuggestionChip(onClick = {
-                                            selectedGenre = g.title; query = g.query; tab = 1
-                                        }, label = { Text(g.title) })
+                                        SuggestionChip(onClick = { genrePage = g },
+                                            label = { Text(g.title) })
                                     }
                                 }
                                 Spacer(Modifier.height(24.dp))
@@ -560,12 +633,12 @@ private fun VistaMusicApp() {
                                 modifier = Modifier.padding(start = 20.dp, bottom = 17.dp))
                             OutlinedTextField(
                                 value = query,
-                                onValueChange = { query = it; selectedGenre = null },
+                                onValueChange = { query = it },
                                 modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp),
                                 singleLine = true, shape = RoundedCornerShape(18.dp),
                                 leadingIcon = { Icon(Icons.Default.Search, null, tint = VmAccent) },
                                 trailingIcon = if (query.isNotBlank()) {
-                                    { IconButton(onClick = { query = ""; selectedGenre = null }) {
+                                    { IconButton(onClick = { query = "" }) {
                                         Icon(Icons.Default.Close, "Limpar", tint = VmMuted)
                                     } }
                                 } else null,
@@ -577,10 +650,7 @@ private fun VistaMusicApp() {
                             LazyColumn(contentPadding = PaddingValues(bottom = 18.dp)) {
                                 if (query.isBlank()) {
                                     item {
-                                        VmGenreDiscovery { genre ->
-                                            selectedGenre = genre.title
-                                            query = genre.query
-                                        }
+                                        VmGenreDiscovery { genre -> genrePage = genre }
                                     }
                                 } else {
                                     if (selectedGenre != null) item {
@@ -591,19 +661,6 @@ private fun VistaMusicApp() {
                                                 modifier = Modifier.weight(1f))
                                             TextButton(onClick = { query = ""; selectedGenre = null }) {
                                                 Text("Voltar")
-                                            }
-                                        }
-                                    }
-                                    if (selectedGenre != null) {
-                                        item {
-                                            VmHeading("Artistas para descobrir",
-                                                Modifier.padding(start = 20.dp, top = 10.dp, bottom = 10.dp))
-                                            LazyRow(contentPadding = PaddingValues(horizontal = 20.dp),
-                                                horizontalArrangement = Arrangement.spacedBy(9.dp)) {
-                                                items(Genres.artists(selectedGenre!!)) { name ->
-                                                    SuggestionChip(onClick = { openArtist(name) },
-                                                        label = { Text(name) })
-                                                }
                                             }
                                         }
                                     }
@@ -639,7 +696,7 @@ private fun VistaMusicApp() {
                                         }
                                     }
                                     if (searchResults.isNotEmpty()) item {
-                                        VmHeading(if (selectedGenre != null) "Seleção do género" else "Músicas",
+                                        VmHeading("Músicas",
                                             Modifier.padding(start = 20.dp, top = 24.dp, bottom = 11.dp))
                                     }
                                     items(searchResults) { song ->
@@ -684,7 +741,7 @@ private fun VistaMusicApp() {
                             Text("Definições", color = VmWhite, fontSize = 29.sp,
                                 fontWeight = FontWeight.ExtraBold)
                             Spacer(Modifier.height(18.dp))
-                            Text("VistaMusic 0.5.0", color = VmAccent, fontWeight = FontWeight.Bold)
+                            Text("VistaMusic 0.6.0", color = VmAccent, fontWeight = FontWeight.Bold)
                             Spacer(Modifier.height(15.dp))
                             Text("Música, letras e biblioteca sem servidor próprio.",
                                 color = VmMuted)
