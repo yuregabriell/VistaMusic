@@ -411,71 +411,123 @@ private fun VistaMusicApp() {
                         0 -> LazyColumn(contentPadding = PaddingValues(bottom = 26.dp)) {
                             item {
                                 Box(Modifier.fillMaxWidth().padding(horizontal = 17.dp)
-                                    .height(177.dp).clip(RoundedCornerShape(24.dp))
+                                    .height(170.dp).clip(RoundedCornerShape(24.dp))
                                     .background(Brush.linearGradient(listOf(Color(0xFF204A42),
                                         Color(0xFF363A50), Color(0xFF232C2D))))
                                     .clickable {
-                                        if (featured.isNotEmpty()) {
-                                            playSongs(featured, 0); playerOpen = true
+                                        if (globalHits.isNotEmpty()) {
+                                            playSongs(globalHits, 0); playerOpen = true
                                         }
-                                    }.padding(22.dp)) {
-                                    Column(Modifier.align(Alignment.CenterStart)) {
-                                        Text("O TEU UNIVERSO MUSICAL", color = VmAccent,
+                                    }.padding(20.dp)) {
+                                    Column(Modifier.align(Alignment.CenterStart)
+                                        .fillMaxWidth(.67f)) {
+                                        Text("DESCOBRE A MÚSICA", color = VmAccent,
                                             fontSize = 10.sp, fontWeight = FontWeight.Bold)
                                         Spacer(Modifier.height(12.dp))
-                                        Text("Descobre o teu\npróximo favorito.",
+                                        Text("A tua próxima\nfavorita está aqui.",
                                             color = VmWhite, fontWeight = FontWeight.ExtraBold,
-                                            fontSize = 28.sp, lineHeight = 33.sp)
+                                            fontSize = 25.sp, lineHeight = 30.sp)
                                     }
-                                    featured.firstOrNull()?.let {
-                                        VmArt(it.art, Modifier.size(101.dp).align(Alignment.CenterEnd))
+                                    globalHits.firstOrNull()?.let { song ->
+                                        VmArt(song.art, Modifier.size(96.dp)
+                                            .align(Alignment.CenterEnd))
                                     }
                                 }
-                                Spacer(Modifier.height(27.dp))
-                                VmHeading("Em alta agora", Modifier.padding(horizontal = 20.dp))
-                                Text("Músicas populares em Portugal", color = VmMuted,
-                                    fontSize = 12.sp, modifier = Modifier.padding(start = 20.dp, top = 6.dp))
-                                Spacer(Modifier.height(13.dp))
+                                Spacer(Modifier.height(25.dp))
                             }
-                            if (featured.isNotEmpty()) item {
-                                LazyRow(contentPadding = PaddingValues(horizontal = 20.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                                    items(featured.take(25)) { song ->
-                                        Column(Modifier.width(150.dp).clickable {
-                                            playSongs(featured, featured.indexOf(song)); playerOpen = true
-                                        }) {
-                                            VmArt(song.art, Modifier.size(150.dp))
-                                            Spacer(Modifier.height(9.dp))
-                                            Text(song.title, color = VmWhite, fontSize = 14.sp,
-                                                fontWeight = FontWeight.SemiBold, maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis)
-                                            Text(song.artist, color = VmMuted, fontSize = 12.sp,
-                                                maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            if (taste.listenedCount() > 0 || favorites.isNotEmpty()) {
+                                item {
+                                    VmHeading("Feito para ti", Modifier.padding(start = 20.dp, bottom = 6.dp))
+                                    Text("Sugestões baseadas no que ouves e guardas",
+                                        color = VmMuted, fontSize = 12.sp,
+                                        modifier = Modifier.padding(start = 20.dp, bottom = 12.dp))
+                                    LazyRow(contentPadding = PaddingValues(horizontal = 20.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(13.dp)) {
+                                        items(forYou.take(16)) { song ->
+                                            Column(Modifier.width(140.dp).clickable {
+                                                playSongs(forYou, forYou.indexOf(song))
+                                                playerOpen = true
+                                            }) {
+                                                VmArt(song.art, Modifier.size(140.dp))
+                                                Spacer(Modifier.height(8.dp))
+                                                Text(song.title, color = VmWhite,
+                                                    fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                                                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                                Text(song.artist, color = VmMuted, fontSize = 11.sp,
+                                                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                            }
+                                        }
+                                    }
+                                    Spacer(Modifier.height(23.dp))
+                                }
+                            }
+                            item {
+                                VmHeading("Em alta agora", Modifier.padding(start = 20.dp, bottom = 6.dp))
+                                Text("Top Apple Music · Estados Unidos",
+                                    color = VmMuted, fontSize = 12.sp,
+                                    modifier = Modifier.padding(start = 20.dp, bottom = 13.dp))
+                            }
+                            if (globalHits.isNotEmpty()) {
+                                item {
+                                    LazyRow(contentPadding = PaddingValues(horizontal = 20.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                                        items(globalHits.take(25)) { song ->
+                                            Column(Modifier.width(145.dp).clickable {
+                                                playSongs(globalHits, globalHits.indexOf(song))
+                                                playerOpen = true
+                                            }) {
+                                                VmArt(song.art, Modifier.size(145.dp))
+                                                Spacer(Modifier.height(9.dp))
+                                                Text(song.title, color = VmWhite, fontSize = 14.sp,
+                                                    fontWeight = FontWeight.SemiBold, maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis)
+                                                Text(song.artist, color = VmMuted, fontSize = 12.sp,
+                                                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                            }
                                         }
                                     }
                                 }
                             } else item {
-                                Text("O catálogo de tendências está indisponível neste momento.",
+                                Text("O ranking está temporariamente indisponível.",
                                     color = VmMuted, modifier = Modifier.padding(20.dp))
                             }
                             item {
                                 Spacer(Modifier.height(26.dp))
-                                VmHeading("Descobre artistas", Modifier.padding(horizontal = 20.dp))
-                                Spacer(Modifier.height(12.dp))
+                                VmHeading("Em alta em Portugal", Modifier.padding(start = 20.dp, bottom = 6.dp))
+                                Text("Top Apple Music · Portugal",
+                                    color = VmMuted, fontSize = 12.sp,
+                                    modifier = Modifier.padding(start = 20.dp, bottom = 12.dp))
                                 LazyRow(contentPadding = PaddingValues(horizontal = 20.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(9.dp)) {
-                                    items(listOf("Justin Bieber", "Ariana Grande", "The Weeknd",
-                                        "Taylor Swift", "Billie Eilish", "Bruno Mars",
-                                        "Dua Lipa", "Bad Bunny", "Sabrina Carpenter")) { name ->
-                                        SuggestionChip(onClick = { openArtist(name) },
-                                            label = { Text(name) })
+                                    horizontalArrangement = Arrangement.spacedBy(13.dp)) {
+                                    items(featured.take(20)) { song ->
+                                        Column(Modifier.width(145.dp).clickable {
+                                            playSongs(featured, featured.indexOf(song))
+                                            playerOpen = true
+                                        }) {
+                                            VmArt(song.art, Modifier.size(145.dp))
+                                            Spacer(Modifier.height(9.dp))
+                                            Text(song.title, color = VmWhite, fontSize = 13.sp,
+                                                fontWeight = FontWeight.SemiBold, maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis)
+                                            Text(song.artist, color = VmMuted, fontSize = 11.sp,
+                                                maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        }
+                                    }
+                                }
+                                Spacer(Modifier.height(26.dp))
+                                VmHeading("Explora o teu som", Modifier.padding(start = 20.dp, bottom = 12.dp))
+                                LazyRow(contentPadding = PaddingValues(horizontal = 20.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    items(Genres.categories.take(12)) { g ->
+                                        SuggestionChip(onClick = {
+                                            selectedGenre = g.title; query = g.query; tab = 1
+                                        }, label = { Text(g.title) })
                                     }
                                 }
                                 Spacer(Modifier.height(24.dp))
-                                VmHeading("Explora mais", Modifier.padding(horizontal = 20.dp))
-                                Spacer(Modifier.height(10.dp))
+                                VmHeading("Novos sons para descobrir", Modifier.padding(start = 20.dp, bottom = 8.dp))
                             }
-                            items(independent.take(24)) { song ->
+                            items(independent.take(18)) { song ->
                                 VmSongRow(song, isFavorite(song),
                                     { playSongs(independent, independent.indexOf(song)) },
                                     { openSong(song) }, { toggleFavorite(song) })
@@ -486,11 +538,17 @@ private fun VistaMusicApp() {
                                 fontWeight = FontWeight.ExtraBold,
                                 modifier = Modifier.padding(start = 20.dp, bottom = 17.dp))
                             OutlinedTextField(
-                                value = query, onValueChange = { query = it },
+                                value = query,
+                                onValueChange = { query = it; selectedGenre = null },
                                 modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp),
                                 singleLine = true, shape = RoundedCornerShape(18.dp),
                                 leadingIcon = { Icon(Icons.Default.Search, null, tint = VmAccent) },
-                                placeholder = { Text("O que queres ouvir?", color = VmMuted) },
+                                trailingIcon = if (query.isNotBlank()) {
+                                    { IconButton(onClick = { query = ""; selectedGenre = null }) {
+                                        Icon(Icons.Default.Close, "Limpar", tint = VmMuted)
+                                    } }
+                                } else null,
+                                placeholder = { Text("Música, álbum ou artista", color = VmMuted) },
                                 colors = OutlinedTextFieldDefaults.colors(
                                     focusedBorderColor = VmAccent,
                                     unfocusedBorderColor = Color(0xFF454E50)))
@@ -498,51 +556,66 @@ private fun VistaMusicApp() {
                             LazyColumn(contentPadding = PaddingValues(bottom = 18.dp)) {
                                 if (query.isBlank()) {
                                     item {
-                                        Text("Músicas, álbuns e artistas, tudo num só lugar.",
-                                            color = VmMuted, modifier = Modifier.padding(22.dp))
-                                    }
-                                    items(listOf("Justin Bieber", "Ariana Grande",
-                                        "The Weeknd", "Taylor Swift")) { name ->
-                                        ListItem(headlineContent = { Text(name) },
-                                            supportingContent = { Text("Ver artista") },
-                                            leadingContent = {
-                                                Icon(Icons.Default.Person, null, tint = VmAccent)
-                                            }, modifier = Modifier.clickable { openArtist(name) })
+                                        VmGenreDiscovery { genre ->
+                                            selectedGenre = genre.title
+                                            query = genre.query
+                                        }
                                     }
                                 } else {
-                                    val artist = suggestions
-                                    if (artist != null) {
+                                    if (selectedGenre != null) item {
+                                        Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp,
+                                            vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+                                            Text("A explorar: ${selectedGenre}", color = VmWhite,
+                                                fontSize = 18.sp, fontWeight = FontWeight.Bold,
+                                                modifier = Modifier.weight(1f))
+                                            TextButton(onClick = { query = ""; selectedGenre = null }) {
+                                                Text("Voltar")
+                                            }
+                                        }
+                                    }
+                                    suggestions?.let { artist ->
                                         item {
-                                            Text("Artista", fontWeight = FontWeight.Bold,
-                                                color = VmWhite, modifier = Modifier.padding(19.dp))
-                                            Row(Modifier.fillMaxWidth().clickable { openArtist(artist.name) }
-                                                .padding(horizontal = 20.dp, vertical = 9.dp),
+                                            VmHeading("Artista", Modifier.padding(start = 20.dp,
+                                                top = 12.dp, bottom = 8.dp))
+                                            Row(Modifier.fillMaxWidth()
+                                                .clickable { openArtist(artist.name) }
+                                                .padding(horizontal = 20.dp, vertical = 10.dp),
                                                 verticalAlignment = Alignment.CenterVertically) {
-                                                Box(Modifier.size(58.dp).background(
-                                                    Color(0xFF28483F), CircleShape),
-                                                    contentAlignment = Alignment.Center) {
-                                                    Icon(Icons.Default.Person, null, tint = VmAccent)
-                                                }
+                                                VmArtistAvatar(searchArtistPhoto, Modifier.size(61.dp))
                                                 Spacer(Modifier.width(13.dp))
                                                 Column {
                                                     Text(artist.name, color = VmWhite,
-                                                        fontWeight = FontWeight.Bold)
-                                                    Text("Ver discografia", color = VmMuted, fontSize = 12.sp)
+                                                        fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                                    Text("Artista · Ver perfil", color = VmMuted,
+                                                        fontSize = 12.sp)
+                                                }
+                                            }
+                                        }
+                                    }
+                                    if (albumResults.isNotEmpty()) {
+                                        item {
+                                            VmHeading("Álbuns", Modifier.padding(start = 20.dp,
+                                                top = 18.dp, bottom = 12.dp))
+                                            LazyRow(contentPadding = PaddingValues(horizontal = 20.dp),
+                                                horizontalArrangement = Arrangement.spacedBy(13.dp)) {
+                                                items(albumResults.take(25)) { album ->
+                                                    VmAlbumTile(album) { openAlbum(album) }
                                                 }
                                             }
                                         }
                                     }
                                     if (searchResults.isNotEmpty()) item {
-                                        VmHeading("Músicas", Modifier.padding(horizontal = 20.dp,
-                                            vertical = 12.dp))
+                                        VmHeading("Músicas", Modifier.padding(start = 20.dp,
+                                            top = 24.dp, bottom = 11.dp))
                                     }
                                     items(searchResults) { song ->
                                         VmSongRow(song, isFavorite(song),
                                             { playSongs(searchResults, searchResults.indexOf(song)) },
                                             { openSong(song) }, { toggleFavorite(song) })
                                     }
-                                    if (searchResults.isEmpty()) item {
-                                        Text("Pesquisa músicas ou artistas pelo nome.",
+                                    if (searchResults.isEmpty() && albumResults.isEmpty() &&
+                                        suggestions == null) item {
+                                        Text("A procurar resultados de músicas e álbuns…",
                                             color = VmMuted, modifier = Modifier.padding(22.dp))
                                     }
                                 }
@@ -577,7 +650,7 @@ private fun VistaMusicApp() {
                             Text("Definições", color = VmWhite, fontSize = 29.sp,
                                 fontWeight = FontWeight.ExtraBold)
                             Spacer(Modifier.height(18.dp))
-                            Text("VistaMusic 0.4.0", color = VmAccent, fontWeight = FontWeight.Bold)
+                            Text("VistaMusic 0.5.0", color = VmAccent, fontWeight = FontWeight.Bold)
                             Spacer(Modifier.height(15.dp))
                             Text("Música, letras e biblioteca sem servidor próprio.",
                                 color = VmMuted)
@@ -600,6 +673,22 @@ private fun VistaMusicApp() {
                                     prefs.edit().putBoolean("previews", it).apply()
                                 })
                             }
+                            Spacer(Modifier.height(18.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text("Reprodução automática", color = VmWhite,
+                                        fontWeight = FontWeight.SemiBold)
+                                    Text("Continua com sugestões ao terminar uma música ou lista",
+                                        color = VmMuted, fontSize = 12.sp)
+                                }
+                                Switch(checked = autoDj, onCheckedChange = {
+                                    autoDj = it
+                                    prefs.edit().putBoolean("auto_dj", it).apply()
+                                })
+                            }
+                            Spacer(Modifier.height(15.dp))
+                            Text("As recomendações usam histórico local, artistas e favoritos. Não enviamos esse histórico para servidores próprios.",
+                                color = VmMuted, fontSize = 12.sp)
                             Spacer(Modifier.height(20.dp))
                             Text("A reprodução de música popular utiliza integrações experimentais. Algumas faixas podem estar indisponíveis.",
                                 color = VmMuted, fontSize = 12.sp)
