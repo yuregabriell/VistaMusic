@@ -1,4 +1,4 @@
-# VistaMusic v0.5.0
+# VistaMusic v0.6.0
 
 Aplicação Android experimental de música com interface premium em **Kotlin, Jetpack Compose e Media3**, sem backend próprio nem base de dados central.
 
@@ -24,7 +24,18 @@ Aplicação Android experimental de música com interface premium em **Kotlin, J
 As recomendações são heurísticas e não equivalem ao Spotify ou a modelos de IA externos. Nem todos os artistas, fotos, álbuns e faixas terão metadados completos. As faixas descobertas nas APIs de catálogo podem não ter um stream reproduzível.
 
 ## Build e Release
-O GitHub Actions `.github/workflows/android.yml` publica um APK de depuração em `v0.5.0` quando o build passa. A assinatura debug gerada em cada build **não é estável**: instalar versões subsequentes pode exigir desinstalar a anterior e perder preferências locais.
+O GitHub Actions `.github/workflows/android.yml` publica um APK de depuração em `v0.6.0` quando o build passa. A assinatura debug gerada em cada build **não é estável**: instalar versões subsequentes pode exigir desinstalar a anterior e perder preferências locais.
 
 ## Licença
 GPL-3.0, com dependência GPL-3.0 do NewPipeExtractor. Uso de terceiros sujeito aos respetivos termos e atribuições. Projeto não afiliado a Spotify, Google/YouTube, Apple, Audius ou TheAudioDB.
+
+
+## Novidades v0.6.0
+
+- YouTube Trending Music, via módulo **YoutubeTrendingMusicExtractor** do NewPipeExtractor, por região PT/US. A secção distingue os YouTube Charts do ranking Apple Music usado como alternativa quando a extração falha. Não é a Home personalizada da conta YouTube Music.
+- Perfil de artista com **até 10 faixas**, unindo pesquisa de vídeos do YouTube ordenada por visualizações da amostra, ranking TheAudioDB e discografia iTunes. Não afirmar que as faixas representam o ranking oficial completo da carreira de cada artista.
+- Géneros passam a ter **páginas dedicadas** com destaque, faixas de vários artistas, perfis e álbuns — não mudam a caixa de pesquisa para um nome genérico.
+- Feito para ti inclui músicas descobertas por pesquisa do YouTube e tendências YouTube, pontuadas localmente por histórico e favoritos.
+- Rádio automática tenta utilizar também **relatedItems** do vídeo YouTube que foi reproduzido; continua a depender das fontes não oficiais e dos limites técnicos e de utilização destas.
+
+A experiência ainda não usa autenticação do YouTube Music, portanto não consegue importar o feed pessoal ou as recomendações privadas da conta. Os rankings musicais da plataforma e as sugestões pessoais do VistaMusic são conceitos distintos.
