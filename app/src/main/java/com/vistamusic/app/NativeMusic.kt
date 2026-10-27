@@ -67,7 +67,7 @@ object NativeMusic {
             .mapNotNull { item ->
                 val id = idFromUrl(item.url) ?: return@mapNotNull null
                 Song("youtube:$id", item.name,
-                    item.uploaderName.orEmpty().ifBlank { "YouTube Music" },
+                    item.uploaderName.orEmpty().removeSuffix(" - Topic").ifBlank { "Artista" },
                     item.thumbnails.firstOrNull()?.url.orEmpty(),
                     "youtube:$id", "YouTube Music · experimental")
             }.distinctBy { it.id }.take(24)
@@ -75,14 +75,16 @@ object NativeMusic {
 
     suspend fun resolve(id: String): String = withContext(Dispatchers.IO) {
         require(id.matches(Regex("[A-Za-z0-9_-]{11}"))) { "ID de música inválido" }
-        ensureInitialized()
-        val extractor = ServiceList.YouTube.getStreamExtractor(
-            "https://www.youtube.com/watch?v=$id")
-        extractor.fetchPage()
-        extractor.audioStreams
-            .filter { it.content.startsWith("https://") }
-            .maxByOrNull { it.averageBitrate }
-            ?.content
-            ?: error("Esta música não tem um stream de áudio acessível.")
+        val direct = runCatching {
+            ensureInitialized()
+            val extractor = ServiceList.YouTube.getStreamExtractor(
+                "https://www.youtube.com/watch?v=$id")
+            extractor.fetchPage()
+            extractor.audioStreams
+                .filter { it.content.startsWith("https://") }
+                .maxByOrNull { it.averageBitrate }
+                ?.content
+        }.getOrNull()
+        direct ?: LibreTubeAudio.resolve(id)
     }
 }
