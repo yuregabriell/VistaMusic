@@ -47,7 +47,7 @@ object Genres {
 @Composable
 private fun GenreCard(genre: GenreCategory, modifier: Modifier = Modifier, onClick: () -> Unit) {
     Box(modifier.height(108.dp).clip(RoundedCornerShape(16.dp))
-        .background(Brush.linearGradient(listOf(Color(genre.color1), Color(genre.color2))))
+        .background(Brush.linearGradient(listOf(Color(genre.color1.toInt()), Color(genre.color2.toInt()))))
         .clickable(onClick = onClick).padding(13.dp)) {
         Icon(Icons.Default.Album, null, tint = Color.White.copy(alpha = .17f),
             modifier = Modifier.size(95.dp).align(Alignment.BottomEnd).offset(x = 20.dp, y = 20.dp))
