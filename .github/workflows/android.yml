@@ -3,6 +3,9 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+concurrency:
+  group: VistaMusic-main-release
+  cancel-in-progress: true
 permissions:
   contents: write
 jobs:
