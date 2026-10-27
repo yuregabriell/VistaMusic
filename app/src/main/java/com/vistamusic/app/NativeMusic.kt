@@ -76,8 +76,8 @@ object NativeMusic {
             !prefix.contains("official", true)) prefix
             else author.removeSuffix(" - Topic").removeSuffix("VEVO").trim()
         val cleanTitle = (if (suffix.isNotBlank()) suffix else originalTitle)
-            .replace(Regex("\\s*[([](?:official|music video|visualizer|audio|lyrics|lyric video)[^)]*[)\\]]",
-                RegexOption.IGNORE_CASE), "").trim()
+            .replace(Regex("""\s*\((?:official|music video|visualizer|audio|lyrics|lyric video)[^)]*\)""", RegexOption.IGNORE_CASE), "").trim()
+
         return Song("youtube:$id", cleanTitle.ifBlank { originalTitle },
             artist.ifBlank { author }, item.thumbnails.firstOrNull()?.url.orEmpty(),
             "youtube:$id", "YouTube · experimental")
@@ -88,7 +88,7 @@ object NativeMusic {
         val extractor = ServiceList.YouTube.getSearchExtractor(query)
         extractor.fetchPage()
         return extractor.initialPage.items.filterIsInstance<StreamInfoItem>()
-            .filter { it.duration in 90..900 || it.duration == -1L }
+            .filter { it.duration in 90L..900L || it.duration == -1L }
     }
 
     suspend fun search(query: String): List<Song> = withContext(Dispatchers.IO) {
@@ -145,6 +145,19 @@ object NativeMusic {
             extractor.initialPage.items.filterIsInstance<StreamInfoItem>()
                 .mapNotNull(::infoToSong).distinctBy { it.id }.take(35)
         }
+
+    suspend fun relatedTo(id: String): List<Song> = withContext(Dispatchers.IO) {
+        if (!id.matches(Regex("[A-Za-z0-9_-]{11}"))) return@withContext emptyList()
+        ensureInitialized()
+        val extractor = ServiceList.YouTube.getStreamExtractor(
+            "https://www.youtube.com/watch?v=$id")
+        extractor.fetchPage()
+        extractor.relatedItems?.items.orEmpty().filterIsInstance<StreamInfoItem>()
+            .filter { it.duration in 90L..900L || it.duration == -1L }
+            .mapNotNull(::infoToSong)
+            .filterNot { it.audio == "youtube:$id" }
+            .distinctBy { it.id }.take(30)
+    }
 
     suspend fun resolve(id: String): String = withContext(Dispatchers.IO) {
         require(id.matches(Regex("[A-Za-z0-9_-]{11}"))) { "ID de música inválido" }
