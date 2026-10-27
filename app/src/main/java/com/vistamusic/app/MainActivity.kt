@@ -653,17 +653,6 @@ private fun VistaMusicApp() {
                                         VmGenreDiscovery { genre -> genrePage = genre }
                                     }
                                 } else {
-                                    if (selectedGenre != null) item {
-                                        Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp,
-                                            vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
-                                            Text("A explorar: ${selectedGenre}", color = VmWhite,
-                                                fontSize = 18.sp, fontWeight = FontWeight.Bold,
-                                                modifier = Modifier.weight(1f))
-                                            TextButton(onClick = { query = ""; selectedGenre = null }) {
-                                                Text("Voltar")
-                                            }
-                                        }
-                                    }
                                     suggestions?.let { artist ->
                                         item {
                                             VmHeading("Artista", Modifier.padding(start = 20.dp,
