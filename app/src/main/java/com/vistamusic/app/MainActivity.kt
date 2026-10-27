@@ -67,9 +67,8 @@ private fun VistaMusic() {
     var popular by remember { mutableStateOf<List<Song>>(emptyList()) }
     val scope = rememberCoroutineScope()
     var youtubeApiKey by remember { mutableStateOf(prefs.getString("youtubeApiKey", "").orEmpty()) }
-    var videoId by remember { mutableStateOf<String?>(null) }
-    var videoQuery by remember { mutableStateOf<String?>(null) }
     var videoBusy by remember { mutableStateOf(false) }
+    var playbackError by remember { mutableStateOf("") }
     var results by remember { mutableStateOf<List<Song>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var searching by remember { mutableStateOf(false) }
@@ -102,33 +101,39 @@ private fun VistaMusic() {
         queueIndex = index
         val song = songs[index]
         selected = song
-        if (song.audio.startsWith("youtube:")) {
+        if (song.audio.startsWith("youtube:") || song.audio.startsWith("discover:")) {
             player.pause()
-            videoQuery = null
-            videoId = song.audio.removePrefix("youtube:")
-            return
-        }
-        if (song.audio.startsWith("discover:")) {
-            player.pause()
+            player.clearMediaItems()
             videoBusy = true
-            val lookFor = song.audio.removePrefix("discover:")
             scope.launch {
-                val found = runCatching { YouTubeCatalog.search(lookFor, youtubeApiKey) }
-                    .getOrDefault(emptyList())
-                if (found.isNotEmpty()) {
-                    videoQuery = null
-                    videoId = found.first().audio.removePrefix("youtube:")
-                } else {
-                    // No key or discovery service offline: open YouTube's own search.
-                    videoId = null
-                    videoQuery = lookFor
+                try {
+                    val videoIdToPlay = if (song.audio.startsWith("youtube:")) {
+                        song.audio.removePrefix("youtube:")
+                    } else {
+                        val lookup = song.audio.removePrefix("discover:")
+                        val matches = NativeMusic.search(lookup)
+                        matches.firstOrNull()?.audio?.removePrefix("youtube:")
+                            ?: error("Não foi encontrada uma versão reproduzível.")
+                    }
+                    val resolvedAudio = NativeMusic.resolve(videoIdToPlay)
+                    if (selected?.id == song.id) {
+                        player.setMediaItem(MediaItem.fromUri(resolvedAudio))
+                        player.prepare()
+                        player.play()
+                        message = ""
+                    }
+                } catch (ex: Exception) {
+                    if (selected?.id == song.id) {
+                        message = "Falhou a reprodução desta música: " +
+                            (ex.localizedMessage ?: "fonte indisponível")
+                        playbackError = message
+                    }
+                } finally {
+                    videoBusy = false
                 }
-                videoBusy = false
             }
             return
         }
-        videoId = null
-        videoQuery = null
         player.setMediaItem(MediaItem.fromUri(song.audio))
         player.prepare()
         player.play()
@@ -354,12 +359,21 @@ private fun VistaMusic() {
                         }
                         if (query.isNotBlank()) item {
                             OutlinedButton(
-                                onClick = { player.pause(); videoId = null; videoQuery = query },
+                                onClick = {
+                                    scope.launch {
+                                        searching = true
+                                        results = runCatching { NativeMusic.search(query) }
+                                            .getOrDefault(emptyList())
+                                        searching = false
+                                        if (results.isEmpty()) playbackError =
+                                            "Não foi possível encontrar música nesta fonte."
+                                    }
+                                },
                                 modifier = Modifier.padding(horizontal = 19.dp, vertical = 12.dp)
                             ) {
-                                Icon(Icons.Default.OpenInNew, null)
+                                Icon(Icons.Default.Search, null)
                                 Spacer(Modifier.width(8.dp))
-                                Text("Procurar diretamente no YouTube")
+                                Text("Procurar músicas completas")
                             }
                         }
                     }
@@ -386,19 +400,10 @@ private fun VistaMusic() {
                     Spacer(Modifier.height(10.dp))
                     Text("Audius: músicas completas (ativo)", color = White)
                     Spacer(Modifier.height(8.dp))
-                    Text("YouTube: vídeos oficiais e hits populares", color = White)
+                    Text("Fonte experimental de música popular", color = White)
                     Spacer(Modifier.height(6.dp))
-                    Text("Pesquisa experimental sem chave; os vídeos são reproduzidos no player oficial e podem ter anúncios.",
+                    Text("Reprodução nativa de áudio, sem abrir o YouTube. Esta integração não oficial pode falhar ou deixar de funcionar com alterações do serviço.",
                         color = Fog, fontSize = 12.sp)
-                    Spacer(Modifier.height(10.dp))
-                    Text("Chave opcional da YouTube Data API", color = Fog, fontSize = 12.sp)
-                    OutlinedTextField(
-                        value = youtubeApiKey, onValueChange = {
-                            youtubeApiKey = it.trim()
-                            prefs.edit().putString("youtubeApiKey", youtubeApiKey).apply()
-                        },
-                        singleLine = true, modifier = Modifier.fillMaxWidth(),
-                        placeholder = { Text("YouTube Data API v3 (opcional)") })
                     Spacer(Modifier.height(18.dp))
                     Text("Jamendo: introduz o teu Client ID gratuito", color = Fog, fontSize = 12.sp)
                     OutlinedTextField(
@@ -418,12 +423,11 @@ private fun VistaMusic() {
                         })
                     }
                     Spacer(Modifier.height(18.dp))
-                    Text("Versão 0.2.0 experimental", color = Fog, fontSize = 12.sp)
+                    Text("Versão 0.3.0 experimental", color = Fog, fontSize = 12.sp)
                 }
             }
         }
-        if (selected != null && selected?.audio?.startsWith("youtube:") != true &&
-            selected?.audio?.startsWith("discover:") != true) {
+        if (selected != null) {
             val current = selected!!
             Column(
                 Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp)
@@ -474,16 +478,18 @@ private fun VistaMusic() {
         }
     }
     if (videoBusy) {
-        AlertDialog(onDismissRequest = {}, title = { Text("A encontrar a música…") },
+        AlertDialog(onDismissRequest = {}, title = { Text("A preparar a música…") },
             text = { Row(verticalAlignment = Alignment.CenterVertically) {
                 CircularProgressIndicator(modifier = Modifier.size(28.dp))
                 Spacer(Modifier.width(14.dp))
-                Text("A procurar um vídeo reproduzível")
+                Text("A obter áudio para o player VistaMusic")
             } }, confirmButton = {})
     }
-    if (videoId != null || videoQuery != null) {
-        YouTubeViewer(videoId = videoId, searchQuery = videoQuery,
-            onClose = { videoId = null; videoQuery = null })
+    if (playbackError.isNotBlank()) {
+        AlertDialog(onDismissRequest = { playbackError = "" },
+            title = { Text("Não foi possível reproduzir") },
+            text = { Text(playbackError) },
+            confirmButton = { TextButton(onClick = { playbackError = "" }) { Text("OK") } })
     }
 }
 
