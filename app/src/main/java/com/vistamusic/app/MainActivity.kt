@@ -77,6 +77,7 @@ private fun VistaMusicApp() {
 
     var artistPage by remember { mutableStateOf<String?>(null) }
     var artistInfo by remember { mutableStateOf<ArtistInfo?>(null) }
+    var artistBio by remember { mutableStateOf<ArtistBio?>(null) }
     var artistSongs by remember { mutableStateOf<List<Song>>(emptyList()) }
     var artistAlbums by remember { mutableStateOf<List<AlbumInfo>>(emptyList()) }
     var artistLoading by remember { mutableStateOf(false) }
@@ -121,7 +122,7 @@ private fun VistaMusicApp() {
     }
     fun openArtist(name: String) {
         artistPage = name
-        artistInfo = null; artistSongs = emptyList(); artistAlbums = emptyList()
+        artistInfo = null; artistBio = null; artistSongs = emptyList(); artistAlbums = emptyList()
         albumPage = null; songPage = null
         playerOpen = false; lyricsOpen = false
     }
@@ -251,6 +252,7 @@ private fun VistaMusicApp() {
         val name = artistPage ?: return@LaunchedEffect
         artistLoading = true
         artistInfo = runCatching { catalog.artist(name) }.getOrNull()
+        artistBio = runCatching { ArtistBiography.fetch(name) }.getOrNull()
         artistSongs = runCatching { catalog.artistSongs(name, artistInfo?.id ?: 0L) }
             .getOrDefault(emptyList())
         artistAlbums = runCatching { catalog.artistAlbums(name, artistInfo?.id ?: 0L) }
@@ -317,7 +319,7 @@ private fun VistaMusicApp() {
                     onPlay = { playSongs(albumSongs, albumSongs.indexOf(it)); playerOpen = true },
                     onSong = ::openSong, isFavorite = ::isFavorite, onFavorite = ::toggleFavorite)
                 artistPage != null -> VmArtistPage(
-                    name = artistPage!!, info = artistInfo, songs = artistSongs, albums = artistAlbums,
+                    name = artistPage!!, info = artistInfo, bio = artistBio, songs = artistSongs, albums = artistAlbums,
                     loading = artistLoading, followed = followed.contains(artistPage),
                     onFollow = { toggleFollow(artistPage!!) }, onBack = { artistPage = null },
                     onPlay = { playSongs(artistSongs, artistSongs.indexOf(it)); playerOpen = true },
