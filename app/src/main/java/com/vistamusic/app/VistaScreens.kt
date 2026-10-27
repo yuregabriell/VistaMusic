@@ -107,7 +107,7 @@ fun VmBackBar(title: String, onBack: () -> Unit) {
 
 @Composable
 fun VmArtistPage(
-    name: String, info: ArtistInfo?, songs: List<Song>, albums: List<AlbumInfo>,
+    name: String, info: ArtistInfo?, bio: ArtistBio?, songs: List<Song>, albums: List<AlbumInfo>,
     loading: Boolean, followed: Boolean, onFollow: () -> Unit, onBack: () -> Unit,
     onPlay: (Song) -> Unit, onSong: (Song) -> Unit,
     onAlbum: (AlbumInfo) -> Unit, isFavorite: (Song) -> Boolean,
@@ -119,7 +119,7 @@ fun VmArtistPage(
             item {
                 Box(Modifier.fillMaxWidth().height(270.dp).background(
                     Brush.verticalGradient(listOf(Color(0xFF36594E), VmBackground)))) {
-                    val cover = songs.firstOrNull()?.art ?: albums.firstOrNull()?.art.orEmpty()
+                    val cover = bio?.photo?.takeIf { it.isNotBlank() } ?: songs.firstOrNull()?.art ?: albums.firstOrNull()?.art.orEmpty()
                     VmArt(cover, Modifier.size(196.dp).align(Alignment.Center), circular = true)
                 }
                 Column(Modifier.padding(horizontal = 20.dp)) {
@@ -162,6 +162,18 @@ fun VmArtistPage(
                             VmAlbumTile(album, onClick = { onAlbum(album) })
                         }
                     }
+                }
+            }
+            if (bio != null && bio.summary.isNotBlank()) item {
+                Spacer(Modifier.height(23.dp))
+                VmHeading("Sobre o artista", Modifier.padding(horizontal = 20.dp))
+                Column(Modifier.fillMaxWidth().padding(18.dp)
+                    .clip(RoundedCornerShape(22.dp)).background(VmCard)
+                    .padding(19.dp)) {
+                    Text(bio.summary, color = VmWhite.copy(alpha = .86f),
+                        fontSize = 14.sp, lineHeight = 21.sp)
+                    Spacer(Modifier.height(12.dp))
+                    Text("Fonte: Wikipédia", color = VmMuted, fontSize = 11.sp)
                 }
             }
             if (!loading && songs.isEmpty() && albums.isEmpty()) item {
@@ -485,7 +497,14 @@ fun VmLyricsPage(song: Song, sheet: LyricSheet?, position: Long,
         }
         val index = if (sheet?.synchronized == true)
             sheet.lines.indexOfLast { it.timeMs <= position }.coerceAtLeast(0) else -1
+        val lyricsScroll = androidx.compose.foundation.lazy.rememberLazyListState()
+        LaunchedEffect(index) {
+            if (index >= 0 && sheet?.synchronized == true) {
+                lyricsScroll.animateScrollToItem((index - 2).coerceAtLeast(0))
+            }
+        }
         LazyColumn(Modifier.weight(1f).padding(horizontal = 25.dp),
+            state = lyricsScroll,
             contentPadding = PaddingValues(top = 30.dp, bottom = 40.dp),
             verticalArrangement = Arrangement.spacedBy(15.dp)) {
             if (sheet?.lines.isNullOrEmpty()) item {
