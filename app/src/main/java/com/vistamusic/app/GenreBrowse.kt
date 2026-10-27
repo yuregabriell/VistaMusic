@@ -25,6 +25,26 @@ data class GenreCategory(
     val subtitle: String = ""
 )
 object Genres {
+    // Editorial starter artists per genre (not rankings or generated popularity claims).
+    fun artists(genre: String): List<String> = when (genre) {
+        "Pop" -> listOf("Ariana Grande", "Sabrina Carpenter", "Dua Lipa", "Justin Bieber")
+        "Hip-hop" -> listOf("Drake", "Kendrick Lamar", "Travis Scott", "J. Cole")
+        "Rock" -> listOf("Linkin Park", "Foo Fighters", "Paramore", "Muse")
+        "Música portuguesa" -> listOf("Plutónio", "Bárbara Bandeira", "Slow J", "D.A.M.A")
+        "R&B" -> listOf("SZA", "The Weeknd", "Frank Ocean", "H.E.R.")
+        "Eletrónica" -> listOf("Calvin Harris", "David Guetta", "Disclosure", "Martin Garrix")
+        "K-pop" -> listOf("BLACKPINK", "BTS", "NewJeans", "TWICE")
+        "Indie" -> listOf("Arctic Monkeys", "Tame Impala", "Clairo", "The 1975")
+        "Latinas" -> listOf("Bad Bunny", "Karol G", "Rauw Alejandro", "Rosalía")
+        "Afrobeats" -> listOf("Burna Boy", "Rema", "Tems", "Ayra Starr")
+        "Sertanejo" -> listOf("Marília Mendonça", "Gusttavo Lima", "Ana Castela", "Zé Neto e Cristiano")
+        "Animes" -> listOf("YOASOBI", "Aimer", "LiSA", "Eve")
+        "Jazz" -> listOf("Norah Jones", "Kamasi Washington", "Diana Krall", "Miles Davis")
+        "Clássica" -> listOf("Ludovico Einaudi", "Yiruma", "Max Richter", "Ólafur Arnalds")
+        "Românticas" -> listOf("Ed Sheeran", "Adele", "John Legend", "Sam Smith")
+        "Novidades" -> listOf("Sabrina Carpenter", "Tate McRae", "Billie Eilish", "Chappell Roan")
+        else -> emptyList()
+    }
     val categories = listOf(
         GenreCategory("Pop", "Ariana Grande", 0xFFC24F83, 0xFF773D88),
         GenreCategory("Hip-hop", "Drake", 0xFFB96C27, 0xFF75472F),
