@@ -17,8 +17,9 @@ jobs:
           java-version: '17'
       - name: Install Android platform
         run: |
-          echo "y" | sdkmanager --licenses >/dev/null || true
-          sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+          SDKMANAGER=$(find /usr/local/lib/android/sdk/cmdline-tools -path "*/bin/sdkmanager" -type f | sort -V | tail -1)
+          echo "y" | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" 'platforms;android-35' 'build-tools;35.0.0'
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
