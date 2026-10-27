@@ -1,33 +1,30 @@
-# VistaMusic
+# VistaMusic v0.5.0
 
-App experimental de música para Android com design premium, desenvolvido em **Kotlin + Jetpack Compose + Media3**.
+Aplicação Android experimental de música com interface premium em **Kotlin, Jetpack Compose e Media3**, sem backend próprio nem base de dados central.
 
-## Funcionalidades v0.4.0
-- Pesquisa de músicas populares e independentes com reprodução no player próprio
-- Início com destaques musicais, favoritos e artistas seguidos, sem backend nem conta própria
-- **Perfis de artistas** com foto, género, músicas, álbuns, singles e texto biográfico atribuído à Wikipédia (quando disponível)
-- **Páginas de músicas** com informação de álbum, ano, género e letra quando disponível
-- **Páginas de álbuns** com capa, ano e lista de faixas
-- Player expandido com capa, barra de progresso, anterior, seguinte, aleatório, repetição e favoritos
-- Letras sincronizadas ou sem sincronização via **LRCLIB** (gratuito, sem chave); destaque e scroll automático
-- Barra de estado respeitada com padding em todas as páginas
-- Sem WebView do YouTube, sem modal de preparação, sem texto da fonte no catálogo, sem indicador linear na pesquisa
+## Novidades
+- Pesquisa vazia com **Descobre algo novo**, géneros musicais em cartões e navegação por interesses
+- Pesquisa simultânea de artistas, **álbuns reais** e músicas; os álbuns abrem com as suas faixas
+- Fotografias e banners de artistas com TheAudioDB; fallback Wikimedia; atribuições nos perfis
+- Perfil de artista reorganizado: fotografia, músicas mais populares **quando verificadas pelo TheAudioDB**, álbuns/singles, **Ver todas as músicas**, biografia
+- Mini-player com botões **Anterior, Play/Pausa, Próximo** e barra inferior de **progresso e buffer**
+- Rankings reais **Apple Music Estados Unidos** e **Apple Music Portugal**, identificados com a sua origem e país, sem confundir rankings com Spotify
+- Personalização local **LocalTaste**: mantém até 180 eventos no armazenamento privado da app, pondera artistas, histórico, favoritos, saltos, popularidade relativa, repetição e novidade
+- Autoplay/rádio: após uma música isolada ou no fim de uma fila, procura e ordena música relacionada usando dados do dispositivo e os catálogos disponíveis. Não usa um LLM, nem envia histórico para servidor próprio.
+- Mantém leitor completo, letras sincronizadas LRCLIB e biblioteca privada.
 
-## Reprodutores e metadados
-- NewPipeExtractor: resolução experimental de streams de áudio para Media3
-- **Fallback inspirado no LibreTube**: consulta aos servidores **Piped** com endpoint documentado `/streams/:videoId`, usando apenas audioStreams. **Não foi copiado nem incorporado o aplicativo LibreTube completo**.
-- Audius: streaming de música independente
-- Jamendo: integração opcional com Client ID
-- Apple iTunes Search API: informação de artistas, músicas, álbuns e prévias quando ativadas
-- Wikimedia REST API: biografia e imagem do artista
-- LRCLIB: letra LRC com timestamps e letra não sincronizada
+## Fontes de metadados e reprodução
+- Apple RSS Top Charts e iTunes Search API: **metadados, álbuns e charts**, não streaming comercial autorizado
+- TheAudioDB: imagens de artistas e rankings, quando disponíveis
+- Wikimedia: biografias e imagens públicas
+- LRCLIB: letras
+- Audius e Jamendo: faixas disponíveis sob condições das fontes
+- NewPipeExtractor e fallback experimental Piped (inspirado pelo LibreTube): streaming de música, **não oficial**, sujeito a alterações técnicas, regras de serviços e indisponibilidade. Sem integração com login Spotify.
 
-Nenhum destes conectores constitui acesso oficial e autorizado ao catálogo integral do Spotify ou do YouTube Music. Serviços experimentais podem ser interrompidos por alterações externas, bloqueios ou políticas dos fornecedores. Os termos de cada serviço permanecem aplicáveis. A disponibilização de metadados não garante a reprodução de todas as músicas.
+As recomendações são heurísticas e não equivalem ao Spotify ou a modelos de IA externos. Nem todos os artistas, fotos, álbuns e faixas terão metadados completos. As faixas descobertas nas APIs de catálogo podem não ter um stream reproduzível.
 
-## Compilação e APK
-A GitHub Action `.github/workflows/android.yml` compila `assembleDebug` e, após êxito, publica o APK na prerelease `v0.4.0`.
+## Build e Release
+O GitHub Actions `.github/workflows/android.yml` publica um APK de depuração em `v0.5.0` quando o build passa. A assinatura debug gerada em cada build **não é estável**: instalar versões subsequentes pode exigir desinstalar a anterior e perder preferências locais.
 
-Versão de testes assinada com chave debug efémera do GitHub Actions. Para atualizações sem desinstalação será necessária uma chave de assinatura estável.
-
-## Licenças e atribuições
-Código licenciado sob GPL-3.0. NewPipeExtractor e LibreTube são software GPL, mas o VistaMusic não inclui código-fonte do LibreTube. Piped e LRCLIB são fornecedores externos. Biografias da Wikipédia sujeitas às respetivas licenças de conteúdo. O VistaMusic não é afiliado ao Spotify, Google, YouTube, Apple ou Wikimedia.
+## Licença
+GPL-3.0, com dependência GPL-3.0 do NewPipeExtractor. Uso de terceiros sujeito aos respetivos termos e atribuições. Projeto não afiliado a Spotify, Google/YouTube, Apple, Audius ou TheAudioDB.
