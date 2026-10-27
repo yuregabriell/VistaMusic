@@ -27,6 +27,50 @@ class LibraryCatalog {
                 .optJSONArray("results") ?: JSONArray()
         } finally { c.disconnect() }
     }
+    suspend fun searchAlbums(query: String): List<AlbumInfo> = withContext(Dispatchers.IO) {
+        if (query.isBlank()) return@withContext emptyList()
+        runCatching {
+            val a = request("https://itunes.apple.com/search?term=${enc(query)}&entity=album&limit=40&country=PT")
+            (0 until a.length()).mapNotNull { idx ->
+                val j = a.optJSONObject(idx) ?: return@mapNotNull null
+                if (j.optString("collectionType") != "Album") return@mapNotNull null
+                AlbumInfo(j.optLong("collectionId"), j.optString("collectionName"),
+                    j.optString("artistName"),
+                    j.optString("artworkUrl100").replace("100x100bb", "600x600bb"),
+                    j.optString("releaseDate").take(4), j.optInt("trackCount"))
+            }.filter { it.id > 0L }.distinctBy { it.id }
+        }.getOrDefault(emptyList())
+    }
+    suspend fun topArtistSongs(name: String, allSongs: List<Song>): List<Song> =
+        withContext(Dispatchers.IO) {
+            // TheAudioDB top 10 is a chart, unlike iTunes lookup's unsorted discography.
+            val chart = runCatching {
+                val link = "https://www.theaudiodb.com/api/v1/json/123/track-top10.php?s=${enc(name)}"
+                val conn = URL(link).openConnection() as HttpURLConnection
+                conn.connectTimeout = 6000; conn.readTimeout = 7000
+                try {
+                    if (conn.responseCode !in 200..299) emptyList<String>()
+                    else {
+                        val arr = JSONObject(conn.inputStream.bufferedReader().use {
+                            it.readText()
+                        }).optJSONArray("track")
+                        (0 until (arr?.length() ?: 0)).mapNotNull { i ->
+                            arr?.optJSONObject(i)?.optString("strTrack")
+                                ?.takeIf { it.isNotBlank() }
+                        }
+                    }
+                } finally { conn.disconnect() }
+            }.getOrDefault(emptyList())
+            fun normalize(s: String): String = s.lowercase().replace(
+                Regex("[^\\p{L}\\p{N}]+"), " ").trim()
+            val ordered = chart.mapNotNull { title ->
+                allSongs.firstOrNull { normalize(it.title) == normalize(title) }
+                    ?: allSongs.firstOrNull { normalize(it.title).startsWith(normalize(title)) }
+            }.distinctBy { it.id }
+            // Ranking only contains matches grounded to official chart. If empty show discography
+            // as 'Em destaque' rather than mislabeling it as ranked top.
+            ordered
+        }
     suspend fun artist(name: String): ArtistInfo? = withContext(Dispatchers.IO) {
         runCatching {
             val found = request("https://itunes.apple.com/search?term=${enc(name)}&media=music&entity=musicArtist&limit=25&country=PT")
