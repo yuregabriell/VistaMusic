@@ -1,8 +1,8 @@
 package com.vistamusic.app
 
-import android.content.Context
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
@@ -20,7 +20,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -28,505 +27,547 @@ import androidx.compose.ui.unit.sp
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
-import coil.compose.AsyncImage
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.json.JSONArray
-import kotlin.math.roundToInt
-
-private val Back = Color(0xFF090B0D)
-private val Panel = Color(0xFF171B1F)
-private val Elevated = Color(0xFF22282C)
-private val Lime = Color(0xFFB9F773)
-private val Fog = Color(0xFF929B9D)
-private val White = Color(0xFFF7FAF7)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        window.statusBarColor = android.graphics.Color.rgb(9, 11, 14)
+        window.navigationBarColor = android.graphics.Color.rgb(9, 11, 14)
         setContent {
-            MaterialTheme(colorScheme = darkColorScheme(
-                primary = Lime, background = Back, surface = Panel, onSurface = White,
-                onBackground = White, onPrimary = Back)) {
-                VistaMusic()
-            }
+            MaterialTheme(
+                colorScheme = darkColorScheme(
+                    primary = VmAccent, onPrimary = VmBackground,
+                    background = VmBackground, surface = VmCard,
+                    onSurface = VmWhite, onBackground = VmWhite)
+            ) { VistaMusicApp() }
         }
     }
 }
 
 @Composable
-private fun VistaMusic() {
+private fun VistaMusicApp() {
     val context = androidx.compose.ui.platform.LocalContext.current
-    val prefs = remember { context.getSharedPreferences("vistamusic", Context.MODE_PRIVATE) }
-    val api = remember { MusicApi() }
+    val prefs = remember { context.getSharedPreferences("vistamusic", android.content.Context.MODE_PRIVATE) }
+    val music = remember { MusicApi() }
+    val catalog = remember { LibraryCatalog() }
     val player = remember { ExoPlayer.Builder(context).build() }
-    var isPlaying by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+
     var tab by remember { mutableIntStateOf(0) }
     var query by remember { mutableStateOf("") }
-    var trending by remember { mutableStateOf<List<Song>>(emptyList()) }
-    var popular by remember { mutableStateOf<List<Song>>(emptyList()) }
-    val scope = rememberCoroutineScope()
-    var youtubeApiKey by remember { mutableStateOf(prefs.getString("youtubeApiKey", "").orEmpty()) }
-    var videoBusy by remember { mutableStateOf(false) }
-    var playbackError by remember { mutableStateOf("") }
-    var results by remember { mutableStateOf<List<Song>>(emptyList()) }
-    var loading by remember { mutableStateOf(true) }
-    var searching by remember { mutableStateOf(false) }
-    var message by remember { mutableStateOf("") }
-    var selected by remember { mutableStateOf<Song?>(null) }
+    var searchResults by remember { mutableStateOf<List<Song>>(emptyList()) }
+    var suggestions by remember { mutableStateOf<ArtistInfo?>(null) }
+    var featured by remember { mutableStateOf<List<Song>>(emptyList()) }
+    var independent by remember { mutableStateOf<List<Song>>(emptyList()) }
+    var nowPlaying by remember { mutableStateOf<Song?>(null) }
     var queue by remember { mutableStateOf<List<Song>>(emptyList()) }
     var queueIndex by remember { mutableIntStateOf(0) }
-    var position by remember { mutableLongStateOf(0L) }
-    var duration by remember { mutableLongStateOf(0L) }
-    var jamendo by remember { mutableStateOf(prefs.getString("jamendo", "").orEmpty()) }
-    var previews by remember { mutableStateOf(prefs.getBoolean("previews", false)) }
+    var isPlaying by remember { mutableStateOf(false) }
+    var loadingAudio by remember { mutableStateOf(false) }
+    var positionMs by remember { mutableLongStateOf(0L) }
+    var durationMs by remember { mutableLongStateOf(0L) }
+    var playbackError by remember { mutableStateOf("") }
+    var playerOpen by remember { mutableStateOf(false) }
+    var lyricsOpen by remember { mutableStateOf(false) }
+    var shuffle by remember { mutableStateOf(false) }
+    var repeat by remember { mutableStateOf(false) }
+
+    var artistPage by remember { mutableStateOf<String?>(null) }
+    var artistInfo by remember { mutableStateOf<ArtistInfo?>(null) }
+    var artistSongs by remember { mutableStateOf<List<Song>>(emptyList()) }
+    var artistAlbums by remember { mutableStateOf<List<AlbumInfo>>(emptyList()) }
+    var artistLoading by remember { mutableStateOf(false) }
+
+    var albumPage by remember { mutableStateOf<AlbumInfo?>(null) }
+    var albumSongs by remember { mutableStateOf<List<Song>>(emptyList()) }
+    var albumLoading by remember { mutableStateOf(false) }
+    var songPage by remember { mutableStateOf<Song?>(null) }
+    var songDetails by remember { mutableStateOf<SongInfo?>(null) }
+    var songLyrics by remember { mutableStateOf<LyricSheet?>(null) }
+    var playerLyrics by remember { mutableStateOf<LyricSheet?>(null) }
+
+    var jamendoId by remember { mutableStateOf(prefs.getString("jamendo", "").orEmpty()) }
+    var includePreviews by remember { mutableStateOf(prefs.getBoolean("previews", false)) }
+
     val favorites = remember {
         mutableStateListOf<Song>().apply {
-            val arr = runCatching { JSONArray(prefs.getString("favorites", "[]")) }.getOrDefault(JSONArray())
-            for (i in 0 until arr.length()) {
-                arr.optJSONObject(i)?.let { json ->
-                    runCatching { Song.fromJson(json) }.getOrNull()?.let { add(it) }
-                }
+            val a = runCatching { JSONArray(prefs.getString("favorites", "[]")) }
+                .getOrDefault(JSONArray())
+            for (i in 0 until a.length()) {
+                a.optJSONObject(i)?.let { j -> runCatching { Song.fromJson(j) }.getOrNull()?.let { add(it) } }
             }
         }
     }
-    fun saveFavorites() {
-        val arr = JSONArray()
-        favorites.forEach { arr.put(it.toJson()) }
-        prefs.edit().putString("favorites", arr.toString()).apply()
+    val followed = remember {
+        mutableStateListOf<String>().apply {
+            val a = runCatching { JSONArray(prefs.getString("followed", "[]")) }
+                .getOrDefault(JSONArray())
+            for (i in 0 until a.length()) add(a.optString(i))
+        }
     }
-    fun playSongs(songs: List<Song>, index: Int) {
-        if (songs.isEmpty() || index !in songs.indices) return
-        queue = songs
+    fun isFavorite(song: Song) = favorites.any { it.id == song.id }
+    fun toggleFavorite(song: Song) {
+        if (isFavorite(song)) favorites.removeAll { it.id == song.id } else favorites.add(0, song)
+        val a = JSONArray(); favorites.forEach { a.put(it.toJson()) }
+        prefs.edit().putString("favorites", a.toString()).apply()
+    }
+    fun toggleFollow(name: String) {
+        if (followed.contains(name)) followed.remove(name) else followed.add(name)
+        val a = JSONArray(); followed.forEach { a.put(it) }
+        prefs.edit().putString("followed", a.toString()).apply()
+    }
+    fun openArtist(name: String) {
+        artistPage = name
+        artistInfo = null; artistSongs = emptyList(); artistAlbums = emptyList()
+        albumPage = null; songPage = null
+        playerOpen = false; lyricsOpen = false
+    }
+    fun openSong(song: Song) {
+        songPage = song
+        songDetails = null
+        songLyrics = null
+        playerOpen = false; lyricsOpen = false
+    }
+    fun openAlbum(album: AlbumInfo) {
+        albumPage = album
+        albumSongs = emptyList()
+        songPage = null
+        playerOpen = false; lyricsOpen = false
+    }
+    fun playSongs(list: List<Song>, index: Int) {
+        if (index !in list.indices) return
+        val song = list[index]
+        queue = list
         queueIndex = index
-        val song = songs[index]
-        selected = song
+        nowPlaying = song
+        loadingAudio = false
+        playbackError = ""
+        player.stop(); player.clearMediaItems()
         if (song.audio.startsWith("youtube:") || song.audio.startsWith("discover:")) {
-            player.pause()
-            player.clearMediaItems()
-            videoBusy = true
+            loadingAudio = true
             scope.launch {
                 try {
-                    val videoIdToPlay = if (song.audio.startsWith("youtube:")) {
+                    val id = if (song.audio.startsWith("youtube:")) {
                         song.audio.removePrefix("youtube:")
                     } else {
-                        val lookup = song.audio.removePrefix("discover:")
-                        val matches = NativeMusic.search(lookup)
-                        matches.firstOrNull()?.audio?.removePrefix("youtube:")
-                            ?: error("Não foi encontrada uma versão reproduzível.")
+                        val term = song.audio.removePrefix("discover:")
+                        val results = NativeMusic.search(term)
+                        val exact = results.firstOrNull() ?: error("Música não encontrada.")
+                        exact.audio.removePrefix("youtube:")
                     }
-                    val resolvedAudio = NativeMusic.resolve(videoIdToPlay)
-                    if (selected?.id == song.id) {
-                        player.setMediaItem(MediaItem.fromUri(resolvedAudio))
+                    val uri = NativeMusic.resolve(id)
+                    if (nowPlaying?.id == song.id) {
+                        player.setMediaItem(MediaItem.fromUri(uri))
                         player.prepare()
                         player.play()
-                        message = ""
                     }
                 } catch (ex: Exception) {
-                    if (selected?.id == song.id) {
-                        message = "Falhou a reprodução desta música: " +
-                            (ex.localizedMessage ?: "fonte indisponível")
-                        playbackError = message
-                    }
+                    if (nowPlaying?.id == song.id) playbackError =
+                        "Não foi possível reproduzir esta faixa. Tenta outra música."
                 } finally {
-                    videoBusy = false
+                    if (nowPlaying?.id == song.id) loadingAudio = false
                 }
             }
-            return
+        } else {
+            player.setMediaItem(MediaItem.fromUri(song.audio))
+            player.prepare()
+            player.play()
         }
-        player.setMediaItem(MediaItem.fromUri(song.audio))
-        player.prepare()
-        player.play()
     }
     fun nextSong() {
-        if (queue.isNotEmpty() && queueIndex + 1 < queue.size) {
-            playSongs(queue, queueIndex + 1)
+        if (queue.isEmpty()) return
+        val next = if (shuffle && queue.size > 1)
+            (queue.indices.filter { it != queueIndex }).random()
+        else if (queueIndex + 1 < queue.size) queueIndex + 1
+        else if (repeat) 0
+        else return
+        playSongs(queue, next)
+    }
+    fun previousSong() {
+        if (positionMs > 3500L) { player.seekTo(0); return }
+        if (queueIndex > 0) playSongs(queue, queueIndex - 1)
+        else player.seekTo(0)
+    }
+    fun togglePlayback() {
+        if (loadingAudio) return
+        if (player.mediaItemCount == 0) {
+            if (queue.isNotEmpty()) playSongs(queue, queueIndex)
+        } else if (player.isPlaying) player.pause() else player.play()
+    }
+    fun goBack() {
+        when {
+            lyricsOpen -> lyricsOpen = false
+            playerOpen -> playerOpen = false
+            songPage != null -> songPage = null
+            albumPage != null -> albumPage = null
+            artistPage != null -> artistPage = null
+            tab != 0 -> tab = 0
         }
     }
+    BackHandler(enabled = lyricsOpen || playerOpen || songPage != null ||
+        albumPage != null || artistPage != null || tab != 0) { goBack() }
+
     DisposableEffect(player) {
         val listener = object : Player.Listener {
-            override fun onIsPlayingChanged(isNowPlaying: Boolean) { isPlaying = isNowPlaying }
+            override fun onIsPlayingChanged(playing: Boolean) { isPlaying = playing }
             override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
-                message = "Não foi possível reproduzir esta faixa."
+                playbackError = "O áudio desta faixa não está disponível. Experimenta outra."
+                loadingAudio = false
             }
-            override fun onPlaybackStateChanged(playbackState: Int) {
-                if (playbackState == Player.STATE_ENDED && queueIndex + 1 < queue.size) nextSong()
+            override fun onPlaybackStateChanged(state: Int) {
+                if (state == Player.STATE_ENDED) nextSong()
             }
         }
         player.addListener(listener)
-        onDispose {
-            player.removeListener(listener)
-            player.release()
-        }
+        onDispose { player.removeListener(listener); player.release() }
     }
-    LaunchedEffect(Unit) {
-        loading = true
-        runCatching { api.trending() }
-            .onSuccess { trending = it; message = if (it.isEmpty()) "Nenhuma faixa disponível." else "" }
-            .onFailure { message = "Não foi possível carregar o catálogo. Confirma a ligação à Internet." }
-        loading = false
-    }
-    LaunchedEffect(Unit) {
-        runCatching { api.popular() }
-            .onSuccess { popular = it }
-    }
-    LaunchedEffect(query, tab, jamendo, previews, youtubeApiKey) {
-        if (tab != 1) return@LaunchedEffect
-        if (query.isBlank()) { results = emptyList(); searching = false; return@LaunchedEffect }
-        searching = true
-        delay(450)
-        runCatching { api.search(query, jamendo, previews, youtubeApiKey) }
-            .onSuccess { results = it; message = "" }
-            .onFailure { results = emptyList(); message = "Pesquisa indisponível neste momento." }
-        searching = false
-    }
-    LaunchedEffect(selected) {
+    LaunchedEffect(player) {
         while (true) {
-            delay(650)
-            position = player.currentPosition.coerceAtLeast(0)
-            duration = player.duration.takeIf { it > 0 } ?: 0L
+            delay(360)
+            positionMs = player.currentPosition.coerceAtLeast(0L)
+            durationMs = player.duration.takeIf { it > 0L } ?: 0L
         }
     }
-    Column(Modifier.fillMaxSize().background(Back)) {
-        Row(
-            Modifier.fillMaxWidth().padding(start = 22.dp, end = 20.dp, top = 18.dp, bottom = 14.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                Modifier.size(39.dp).clip(RoundedCornerShape(13.dp)).background(Lime),
-                contentAlignment = Alignment.Center
-            ) { Icon(Icons.Default.GraphicEq, null, tint = Back, modifier = Modifier.size(26.dp)) }
-            Spacer(Modifier.width(12.dp))
-            Column {
-                Text("VistaMusic", color = White, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold)
-                Text("A tua música, do teu jeito.", color = Fog, fontSize = 10.sp)
-            }
-            Spacer(Modifier.weight(1f))
-            IconButton(onClick = { tab = 3 }) {
-                Icon(Icons.Default.Settings, "Definições", tint = Fog)
-            }
+    LaunchedEffect(Unit) {
+        runCatching { music.popular() }.onSuccess { featured = it }
+        runCatching { music.trending() }.onSuccess { independent = it }
+    }
+    LaunchedEffect(query, tab, jamendoId, includePreviews) {
+        if (tab != 1 || query.isBlank()) {
+            if (query.isBlank()) { searchResults = emptyList(); suggestions = null }
+            return@LaunchedEffect
         }
+        delay(480)
+        runCatching { music.search(query, jamendoId, includePreviews, "") }
+            .onSuccess { searchResults = it }.onFailure { searchResults = emptyList() }
+        if (query.length >= 3) {
+            suggestions = runCatching { catalog.artist(query) }.getOrNull()
+        }
+    }
+    LaunchedEffect(artistPage) {
+        val name = artistPage ?: return@LaunchedEffect
+        artistLoading = true
+        artistInfo = runCatching { catalog.artist(name) }.getOrNull()
+        artistSongs = runCatching { catalog.artistSongs(name, artistInfo?.id ?: 0L) }
+            .getOrDefault(emptyList())
+        artistAlbums = runCatching { catalog.artistAlbums(name, artistInfo?.id ?: 0L) }
+            .getOrDefault(emptyList())
+        artistLoading = false
+    }
+    LaunchedEffect(albumPage?.id) {
+        val album = albumPage ?: return@LaunchedEffect
+        albumLoading = true
+        albumSongs = runCatching { catalog.albumSongs(album) }.getOrDefault(emptyList())
+        albumLoading = false
+    }
+    LaunchedEffect(songPage?.id) {
+        val song = songPage ?: return@LaunchedEffect
+        songDetails = runCatching { catalog.songInfo(song) }.getOrNull()
+        songLyrics = runCatching { LyricsApi.find(song.title, song.artist) }.getOrNull()
+    }
+    LaunchedEffect(nowPlaying?.id) {
+        val song = nowPlaying ?: return@LaunchedEffect
+        playerLyrics = null
+        playerLyrics = runCatching { LyricsApi.find(song.title, song.artist) }.getOrNull()
+    }
+
+    Column(Modifier.fillMaxSize().background(VmBackground)
+        .statusBarsPadding().navigationBarsPadding()) {
         Box(Modifier.weight(1f)) {
-            when (tab) {
-                0 -> LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(bottom = 18.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    item {
-                        Box(
-                            Modifier.fillMaxWidth().padding(horizontal = 19.dp)
-                                .height(192.dp).clip(RoundedCornerShape(25.dp))
-                                .background(Brush.linearGradient(listOf(
-                                    Color(0xFF2E5445), Color(0xFF343653), Color(0xFF1A2022))))
-                                .padding(22.dp)
-                        ) {
-                            Column(Modifier.align(Alignment.CenterStart)) {
-                                Text("DESCOBRE NOVOS SONS", color = Lime,
-                                    fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                                Spacer(Modifier.height(9.dp))
-                                Text("Sente cada\nbatida.", color = White, fontSize = 31.sp,
-                                    lineHeight = 34.sp, fontWeight = FontWeight.ExtraBold)
-                                Spacer(Modifier.height(14.dp))
-                                Button(
-                                    onClick = { playSongs(trending, 0) },
-                                    enabled = trending.isNotEmpty(),
-                                    colors = ButtonDefaults.buttonColors(containerColor = Lime, contentColor = Back)
-                                ) {
-                                    Icon(Icons.Default.PlayArrow, null)
-                                    Text("Ouvir agora", fontWeight = FontWeight.Bold)
-                                }
-                            }
-                            if (trending.isNotEmpty()) {
-                                Art(trending.first(), Modifier.size(112.dp)
-                                    .align(Alignment.CenterEnd).clip(RoundedCornerShape(19.dp)))
-                            }
+            when {
+                lyricsOpen && nowPlaying != null -> VmLyricsPage(
+                    song = nowPlaying!!, sheet = playerLyrics, position = positionMs,
+                    playing = isPlaying, onBack = { lyricsOpen = false }, onPlayPause = ::togglePlayback)
+                playerOpen && nowPlaying != null -> VmPlayerPage(
+                    song = nowPlaying!!, position = positionMs, duration = durationMs,
+                    playing = isPlaying, loading = loadingAudio, sheet = playerLyrics,
+                    favorite = isFavorite(nowPlaying!!), repeat = repeat, shuffle = shuffle,
+                    onBack = { playerOpen = false },
+                    onPlayPause = ::togglePlayback, onPrev = ::previousSong,
+                    onNext = ::nextSong, onSeek = { player.seekTo(it) },
+                    onLyrics = { lyricsOpen = true },
+                    onArtist = { openArtist(nowPlaying!!.artist) },
+                    onSong = { openSong(nowPlaying!!) },
+                    onFavorite = { toggleFavorite(nowPlaying!!) },
+                    onShuffle = { shuffle = !shuffle },
+                    onRepeat = {
+                        repeat = !repeat
+                        player.repeatMode = if (repeat) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
+                    })
+                songPage != null -> VmTrackPage(
+                    song = songPage!!, info = songDetails, lyrics = songLyrics,
+                    onBack = { songPage = null },
+                    onPlay = { playSongs(listOf(songPage!!), 0); playerOpen = true },
+                    onArtist = ::openArtist,
+                    onAlbum = {
+                        val song = songPage!!
+                        val info = songDetails
+                        if (info != null && info.albumId > 0) openAlbum(
+                            AlbumInfo(info.albumId, info.album, song.artist, song.art,
+                                info.year, 0))
+                    },
+                    onLyrics = { val s = songPage!!; playSongs(listOf(s), 0); playerOpen = true; lyricsOpen = true },
+                    isFavorite = isFavorite(songPage!!),
+                    onFavorite = { toggleFavorite(songPage!!) })
+                albumPage != null -> VmAlbumPage(albumPage!!, albumSongs, albumLoading,
+                    onBack = { albumPage = null }, onArtist = ::openArtist,
+                    onPlay = { playSongs(albumSongs, albumSongs.indexOf(it)); playerOpen = true },
+                    onSong = ::openSong, isFavorite = ::isFavorite, onFavorite = ::toggleFavorite)
+                artistPage != null -> VmArtistPage(
+                    name = artistPage!!, info = artistInfo, songs = artistSongs, albums = artistAlbums,
+                    loading = artistLoading, followed = followed.contains(artistPage),
+                    onFollow = { toggleFollow(artistPage!!) }, onBack = { artistPage = null },
+                    onPlay = { playSongs(artistSongs, artistSongs.indexOf(it)); playerOpen = true },
+                    onSong = ::openSong, onAlbum = ::openAlbum,
+                    isFavorite = ::isFavorite, onFavorite = ::toggleFavorite)
+                else -> Column(Modifier.fillMaxSize()) {
+                    Row(Modifier.fillMaxWidth().padding(start = 19.dp, end = 13.dp, top = 21.dp, bottom = 23.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(43.dp).clip(RoundedCornerShape(15.dp)).background(VmAccent),
+                            contentAlignment = Alignment.Center) {
+                            Icon(Icons.Default.GraphicEq, "VistaMusic", tint = VmBackground,
+                                modifier = Modifier.size(27.dp))
                         }
-                    }
-                    item { TitleLine("Hits populares em Portugal") }
-                    if (popular.isNotEmpty()) {
-                        item {
-                            LazyRow(
-                                contentPadding = PaddingValues(horizontal = 19.dp),
-                                horizontalArrangement = Arrangement.spacedBy(13.dp)
-                            ) {
-                                items(popular.take(20)) { song ->
-                                    Column(Modifier.width(142.dp).clickable {
-                                        playSongs(popular, popular.indexOf(song))
-                                    }) {
-                                        Art(song, Modifier.size(142.dp)
-                                            .clip(RoundedCornerShape(16.dp)))
-                                        Spacer(Modifier.height(8.dp))
-                                        Text(song.title, color = White, fontSize = 13.sp,
-                                            fontWeight = FontWeight.Bold, maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis)
-                                        Text(song.artist, color = Fog, fontSize = 11.sp,
-                                            maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    item { TitleLine("Explora artistas populares") }
-                    item {
-                        LazyRow(contentPadding = PaddingValues(horizontal = 19.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            items(listOf("Justin Bieber", "Ariana Grande", "The Weeknd",
-                                "Taylor Swift", "Billie Eilish", "Bruno Mars",
-                                "Dua Lipa", "Bad Bunny", "Sabrina Carpenter", "Drake")) { artist ->
-                                SuggestionChip(onClick = { query = artist; tab = 1 },
-                                    label = { Text(artist) })
-                            }
-                        }
-                    }
-                    item { TitleLine("Em alta no Audius") }
-                    if (loading) {
-                        item { CircularProgressIndicator(Modifier.padding(30.dp), color = Lime) }
-                    } else if (trending.isEmpty()) {
-                        item { Text(message, color = Fog, modifier = Modifier.padding(horizontal = 22.dp)) }
-                    } else {
-                        item {
-                            LazyRow(
-                                contentPadding = PaddingValues(horizontal = 19.dp),
-                                horizontalArrangement = Arrangement.spacedBy(13.dp)
-                            ) {
-                                items(trending.take(14)) { song ->
-                                    Column(Modifier.width(142.dp).clickable {
-                                        playSongs(trending, trending.indexOf(song))
-                                    }) {
-                                        Art(song, Modifier.size(142.dp).clip(RoundedCornerShape(16.dp)))
-                                        Spacer(Modifier.height(8.dp))
-                                        Text(song.title, color = White, fontSize = 13.sp,
-                                            fontWeight = FontWeight.Bold, maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis)
-                                        Text(song.artist, color = Fog, fontSize = 11.sp,
-                                            maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    item { TitleLine("Descobre mais") }
-                    items(trending.drop(14)) { song ->
-                        SongRow(song, favorites.any { it.id == song.id },
-                            { playSongs(trending, trending.indexOf(song)) },
-                            {
-                                if (favorites.any { it.id == song.id }) favorites.removeAll { it.id == song.id }
-                                else favorites.add(0, song)
-                                saveFavorites()
-                            })
-                    }
-                }
-                1 -> Column {
-                    Text("Pesquisar", modifier = Modifier.padding(horizontal = 22.dp), color = White,
-                        fontWeight = FontWeight.Bold, fontSize = 26.sp)
-                    Spacer(Modifier.height(14.dp))
-                    OutlinedTextField(
-                        value = query,
-                        onValueChange = { query = it },
-                        placeholder = { Text("Música, artista, álbum...", color = Fog) },
-                        leadingIcon = { Icon(Icons.Default.Search, null, tint = Lime) },
-                        singleLine = true,
-                        shape = RoundedCornerShape(16.dp),
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 19.dp),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = Lime, unfocusedBorderColor = Elevated)
-                    )
-                    Spacer(Modifier.height(14.dp))
-                    if (searching) LinearProgressIndicator(
-                        modifier = Modifier.fillMaxWidth(), color = Lime)
-                    if (query.isBlank()) {
-                        Text("Explora novas músicas e artistas.", color = Fog,
-                            modifier = Modifier.padding(22.dp))
-                    } else if (!searching && results.isEmpty()) {
-                        Text("Nenhuma música encontrada.", color = Fog,
-                            modifier = Modifier.padding(22.dp))
-                    }
-                    LazyColumn(verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                        item {
-                            Text("Vídeos oficiais, catálogo popular e fontes independentes",
-                                color = Fog, fontSize = 12.sp,
-                                modifier = Modifier.padding(horizontal = 22.dp, vertical = 8.dp))
-                        }
-                        items(results) { song ->
-                            SongRow(song, favorites.any { it.id == song.id },
-                                { playSongs(results, results.indexOf(song)) },
-                                {
-                                    if (favorites.any { it.id == song.id }) favorites.removeAll { it.id == song.id }
-                                    else favorites.add(0, song)
-                                    saveFavorites()
-                                })
-                        }
-                        if (query.isNotBlank()) item {
-                            OutlinedButton(
-                                onClick = {
-                                    scope.launch {
-                                        searching = true
-                                        results = runCatching { NativeMusic.search(query) }
-                                            .getOrDefault(emptyList())
-                                        searching = false
-                                        if (results.isEmpty()) playbackError =
-                                            "Não foi possível encontrar música nesta fonte."
-                                    }
-                                },
-                                modifier = Modifier.padding(horizontal = 19.dp, vertical = 12.dp)
-                            ) {
-                                Icon(Icons.Default.Search, null)
-                                Spacer(Modifier.width(8.dp))
-                                Text("Procurar músicas completas")
-                            }
-                        }
-                    }
-                }
-                2 -> LazyColumn {
-                    item { Text("A tua biblioteca", modifier = Modifier.padding(22.dp),
-                        color = White, fontSize = 26.sp, fontWeight = FontWeight.Bold) }
-                    if (favorites.isEmpty()) item {
-                        Text("As tuas músicas favoritas vão aparecer aqui.", color = Fog,
-                            modifier = Modifier.padding(horizontal = 22.dp))
-                    }
-                    items(favorites.toList()) { song ->
-                        SongRow(song, true,
-                            { playSongs(favorites.toList(), favorites.indexOf(song)) },
-                            { favorites.removeAll { it.id == song.id }; saveFavorites() })
-                    }
-                }
-                else -> Column(Modifier.verticalScroll(rememberScrollState()).padding(22.dp)) {
-                    Text("Definições", color = White, fontSize = 26.sp, fontWeight = FontWeight.Bold)
-                    Spacer(Modifier.height(13.dp))
-                    Text("Sem conta própria, servidor ou catálogo alojado.", color = Fog)
-                    Spacer(Modifier.height(24.dp))
-                    Text("Fontes musicais", color = Lime, fontWeight = FontWeight.Bold)
-                    Spacer(Modifier.height(10.dp))
-                    Text("Audius: músicas completas (ativo)", color = White)
-                    Spacer(Modifier.height(8.dp))
-                    Text("Fonte experimental de música popular", color = White)
-                    Spacer(Modifier.height(6.dp))
-                    Text("Reprodução nativa de áudio, sem abrir o YouTube. Esta integração não oficial pode falhar ou deixar de funcionar com alterações do serviço.",
-                        color = Fog, fontSize = 12.sp)
-                    Spacer(Modifier.height(18.dp))
-                    Text("Jamendo: introduz o teu Client ID gratuito", color = Fog, fontSize = 12.sp)
-                    OutlinedTextField(
-                        value = jamendo, onValueChange = {
-                            jamendo = it; prefs.edit().putString("jamendo", it).apply()
-                        },
-                        singleLine = true, modifier = Modifier.fillMaxWidth(),
-                        placeholder = { Text("Jamendo Client ID") })
-                    Spacer(Modifier.height(18.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
-                            Text("Prévias do iTunes", color = White, fontWeight = FontWeight.Medium)
-                            Text("Apenas 30 segundos por faixa", color = Fog, fontSize = 11.sp)
+                            Text("VistaMusic", color = VmWhite, fontSize = 24.sp,
+                                fontWeight = FontWeight.ExtraBold)
+                            Text("A tua música, do teu jeito.", color = VmMuted, fontSize = 11.sp)
                         }
-                        Switch(checked = previews, onCheckedChange = {
-                            previews = it; prefs.edit().putBoolean("previews", it).apply()
-                        })
+                        IconButton(onClick = { tab = 3 }) {
+                            Icon(Icons.Default.Settings, "Definições", tint = VmMuted)
+                        }
                     }
-                    Spacer(Modifier.height(18.dp))
-                    Text("Versão 0.3.0 experimental", color = Fog, fontSize = 12.sp)
+                    when (tab) {
+                        0 -> LazyColumn(contentPadding = PaddingValues(bottom = 26.dp)) {
+                            item {
+                                Box(Modifier.fillMaxWidth().padding(horizontal = 17.dp)
+                                    .height(177.dp).clip(RoundedCornerShape(24.dp))
+                                    .background(Brush.linearGradient(listOf(Color(0xFF204A42),
+                                        Color(0xFF363A50), Color(0xFF232C2D))))
+                                    .clickable {
+                                        if (featured.isNotEmpty()) {
+                                            playSongs(featured, 0); playerOpen = true
+                                        }
+                                    }.padding(22.dp)) {
+                                    Column(Modifier.align(Alignment.CenterStart)) {
+                                        Text("O TEU UNIVERSO MUSICAL", color = VmAccent,
+                                            fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                        Spacer(Modifier.height(12.dp))
+                                        Text("Descobre o teu\npróximo favorito.",
+                                            color = VmWhite, fontWeight = FontWeight.ExtraBold,
+                                            fontSize = 28.sp, lineHeight = 33.sp)
+                                    }
+                                    featured.firstOrNull()?.let {
+                                        VmArt(it.art, Modifier.size(101.dp).align(Alignment.CenterEnd))
+                                    }
+                                }
+                                Spacer(Modifier.height(27.dp))
+                                VmHeading("Em alta agora", Modifier.padding(horizontal = 20.dp))
+                                Text("Músicas populares em Portugal", color = VmMuted,
+                                    fontSize = 12.sp, modifier = Modifier.padding(start = 20.dp, top = 6.dp))
+                                Spacer(Modifier.height(13.dp))
+                            }
+                            if (featured.isNotEmpty()) item {
+                                LazyRow(contentPadding = PaddingValues(horizontal = 20.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                                    items(featured.take(25)) { song ->
+                                        Column(Modifier.width(150.dp).clickable {
+                                            playSongs(featured, featured.indexOf(song)); playerOpen = true
+                                        }) {
+                                            VmArt(song.art, Modifier.size(150.dp))
+                                            Spacer(Modifier.height(9.dp))
+                                            Text(song.title, color = VmWhite, fontSize = 14.sp,
+                                                fontWeight = FontWeight.SemiBold, maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis)
+                                            Text(song.artist, color = VmMuted, fontSize = 12.sp,
+                                                maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        }
+                                    }
+                                }
+                            } else item {
+                                Text("O catálogo de tendências está indisponível neste momento.",
+                                    color = VmMuted, modifier = Modifier.padding(20.dp))
+                            }
+                            item {
+                                Spacer(Modifier.height(26.dp))
+                                VmHeading("Descobre artistas", Modifier.padding(horizontal = 20.dp))
+                                Spacer(Modifier.height(12.dp))
+                                LazyRow(contentPadding = PaddingValues(horizontal = 20.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                                    items(listOf("Justin Bieber", "Ariana Grande", "The Weeknd",
+                                        "Taylor Swift", "Billie Eilish", "Bruno Mars",
+                                        "Dua Lipa", "Bad Bunny", "Sabrina Carpenter")) { name ->
+                                        SuggestionChip(onClick = { openArtist(name) },
+                                            label = { Text(name) })
+                                    }
+                                }
+                                Spacer(Modifier.height(24.dp))
+                                VmHeading("Explora mais", Modifier.padding(horizontal = 20.dp))
+                                Spacer(Modifier.height(10.dp))
+                            }
+                            items(independent.take(24)) { song ->
+                                VmSongRow(song, isFavorite(song),
+                                    { playSongs(independent, independent.indexOf(song)) },
+                                    { openSong(song) }, { toggleFavorite(song) })
+                            }
+                        }
+                        1 -> Column {
+                            Text("Pesquisar", color = VmWhite, fontSize = 30.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                modifier = Modifier.padding(start = 20.dp, bottom = 17.dp))
+                            OutlinedTextField(
+                                value = query, onValueChange = { query = it },
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp),
+                                singleLine = true, shape = RoundedCornerShape(18.dp),
+                                leadingIcon = { Icon(Icons.Default.Search, null, tint = VmAccent) },
+                                placeholder = { Text("O que queres ouvir?", color = VmMuted) },
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = VmAccent,
+                                    unfocusedBorderColor = Color(0xFF454E50)))
+                            Spacer(Modifier.height(17.dp))
+                            LazyColumn(contentPadding = PaddingValues(bottom = 18.dp)) {
+                                if (query.isBlank()) {
+                                    item {
+                                        Text("Músicas, álbuns e artistas, tudo num só lugar.",
+                                            color = VmMuted, modifier = Modifier.padding(22.dp))
+                                    }
+                                    items(listOf("Justin Bieber", "Ariana Grande",
+                                        "The Weeknd", "Taylor Swift")) { name ->
+                                        ListItem(headlineContent = { Text(name) },
+                                            supportingContent = { Text("Ver artista") },
+                                            leadingContent = {
+                                                Icon(Icons.Default.Person, null, tint = VmAccent)
+                                            }, modifier = Modifier.clickable { openArtist(name) })
+                                    }
+                                } else {
+                                    val artist = suggestions
+                                    if (artist != null) {
+                                        item {
+                                            Text("Artista", fontWeight = FontWeight.Bold,
+                                                color = VmWhite, modifier = Modifier.padding(19.dp))
+                                            Row(Modifier.fillMaxWidth().clickable { openArtist(artist.name) }
+                                                .padding(horizontal = 20.dp, vertical = 9.dp),
+                                                verticalAlignment = Alignment.CenterVertically) {
+                                                Box(Modifier.size(58.dp).background(
+                                                    Color(0xFF28483F), CircleShape),
+                                                    contentAlignment = Alignment.Center) {
+                                                    Icon(Icons.Default.Person, null, tint = VmAccent)
+                                                }
+                                                Spacer(Modifier.width(13.dp))
+                                                Column {
+                                                    Text(artist.name, color = VmWhite,
+                                                        fontWeight = FontWeight.Bold)
+                                                    Text("Ver discografia", color = VmMuted, fontSize = 12.sp)
+                                                }
+                                            }
+                                        }
+                                    }
+                                    if (searchResults.isNotEmpty()) item {
+                                        VmHeading("Músicas", Modifier.padding(horizontal = 20.dp,
+                                            vertical = 12.dp))
+                                    }
+                                    items(searchResults) { song ->
+                                        VmSongRow(song, isFavorite(song),
+                                            { playSongs(searchResults, searchResults.indexOf(song)) },
+                                            { openSong(song) }, { toggleFavorite(song) })
+                                    }
+                                    if (searchResults.isEmpty()) item {
+                                        Text("Pesquisa músicas ou artistas pelo nome.",
+                                            color = VmMuted, modifier = Modifier.padding(22.dp))
+                                    }
+                                }
+                            }
+                        }
+                        2 -> LazyColumn(contentPadding = PaddingValues(bottom = 30.dp)) {
+                            item {
+                                Text("A tua biblioteca", color = VmWhite, fontSize = 29.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 18.dp))
+                                if (followed.isNotEmpty()) {
+                                    VmHeading("Artistas seguidos", Modifier.padding(20.dp))
+                                    followed.forEach { name ->
+                                        Text(name, color = VmWhite, modifier = Modifier.fillMaxWidth()
+                                            .clickable { openArtist(name) }.padding(18.dp))
+                                    }
+                                }
+                                VmHeading("Músicas favoritas", Modifier.padding(horizontal = 20.dp,
+                                    vertical = 14.dp))
+                            }
+                            if (favorites.isEmpty()) item {
+                                Text("Adiciona músicas ao coração para as encontrares aqui.",
+                                    color = VmMuted, modifier = Modifier.padding(20.dp))
+                            }
+                            items(favorites.toList()) { song ->
+                                VmSongRow(song, true,
+                                    { playSongs(favorites.toList(), favorites.indexOf(song)) },
+                                    { openSong(song) }, { toggleFavorite(song) })
+                            }
+                        }
+                        else -> Column(Modifier.verticalScroll(rememberScrollState()).padding(22.dp)) {
+                            Text("Definições", color = VmWhite, fontSize = 29.sp,
+                                fontWeight = FontWeight.ExtraBold)
+                            Spacer(Modifier.height(18.dp))
+                            Text("VistaMusic 0.4.0", color = VmAccent, fontWeight = FontWeight.Bold)
+                            Spacer(Modifier.height(15.dp))
+                            Text("Música, letras e biblioteca sem servidor próprio.",
+                                color = VmMuted)
+                            Spacer(Modifier.height(22.dp))
+                            Text("Jamendo · Cliente opcional", color = VmWhite)
+                            OutlinedTextField(value = jamendoId, onValueChange = {
+                                jamendoId = it
+                                prefs.edit().putString("jamendo", it).apply()
+                            }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+                                placeholder = { Text("Client ID") })
+                            Spacer(Modifier.height(20.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text("Prévias do iTunes", color = VmWhite)
+                                    Text("Quando disponíveis, são excertos de 30 segundos",
+                                        color = VmMuted, fontSize = 12.sp)
+                                }
+                                Switch(checked = includePreviews, onCheckedChange = {
+                                    includePreviews = it
+                                    prefs.edit().putBoolean("previews", it).apply()
+                                })
+                            }
+                            Spacer(Modifier.height(20.dp))
+                            Text("A reprodução de música popular utiliza integrações experimentais. Algumas faixas podem estar indisponíveis.",
+                                color = VmMuted, fontSize = 12.sp)
+                            Spacer(Modifier.height(11.dp))
+                            Text("Letras fornecidas por LRCLIB quando disponíveis.",
+                                color = VmMuted, fontSize = 12.sp)
+                        }
+                    }
                 }
             }
         }
-        if (selected != null) {
-            val current = selected!!
-            Column(
-                Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp)
-                    .clip(RoundedCornerShape(17.dp)).background(Panel)
-            ) {
-                Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Art(current, Modifier.size(48.dp).clip(RoundedCornerShape(9.dp)))
-                    Spacer(Modifier.width(11.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(current.title, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                            color = White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                        Text(current.artist + " · " + current.source,
-                            maxLines = 1, overflow = TextOverflow.Ellipsis,
-                            color = Fog, fontSize = 11.sp)
-                    }
-                    IconButton(onClick = {
-                        if (player.isPlaying) player.pause() else player.play()
-                    }) { Icon(if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        "Reproduzir/pausar", tint = White) }
-                    IconButton(onClick = { nextSong() }, enabled = queueIndex + 1 < queue.size) {
-                        Icon(Icons.Default.SkipNext, "Próxima faixa", tint = Lime)
-                    }
+        if (!lyricsOpen && !playerOpen && nowPlaying != null) {
+            VmMiniPlayer(nowPlaying!!, isPlaying, loadingAudio, { playerOpen = true },
+                ::togglePlayback, ::nextSong)
+        }
+        if (!lyricsOpen && !playerOpen && artistPage == null && albumPage == null && songPage == null) {
+            NavigationBar(containerColor = VmBackground) {
+                listOf(Triple("Início", Icons.Default.Home, 0),
+                    Triple("Pesquisar", Icons.Default.Search, 1),
+                    Triple("Biblioteca", Icons.Default.LibraryMusic, 2)).forEach { (title, icon, idx) ->
+                    NavigationBarItem(selected = tab == idx, onClick = { tab = idx },
+                        icon = { Icon(icon, title) }, label = { Text(title) },
+                        colors = NavigationBarItemDefaults.colors(
+                            indicatorColor = VmAccent, selectedIconColor = VmBackground,
+                            selectedTextColor = VmAccent, unselectedIconColor = VmMuted,
+                            unselectedTextColor = VmMuted))
                 }
-                val ratio = if (duration > 0) (position.toFloat() / duration).coerceIn(0f, 1f) else 0f
-                LinearProgressIndicator(progress = { ratio },
-                    modifier = Modifier.fillMaxWidth().height(3.dp),
-                    color = Lime, trackColor = Elevated)
             }
         }
-        NavigationBar(containerColor = Back, tonalElevation = 0.dp) {
-            val labels = listOf("Início", "Pesquisar", "Biblioteca")
-            val icons = listOf(Icons.Default.Home, Icons.Default.Search, Icons.Default.LibraryMusic)
-            labels.forEachIndexed { index, text ->
-                NavigationBarItem(
-                    selected = tab == index, onClick = { tab = index },
-                    icon = { Icon(icons[index], text) },
-                    label = { Text(text) },
-                    alwaysShowLabel = true,
-                    colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = Back, selectedTextColor = Lime,
-                        indicatorColor = Lime, unselectedIconColor = Fog,
-                        unselectedTextColor = Fog)
-                )
-            }
-        }
-    }
-    if (videoBusy) {
-        AlertDialog(onDismissRequest = {}, title = { Text("A preparar a música…") },
-            text = { Row(verticalAlignment = Alignment.CenterVertically) {
-                CircularProgressIndicator(modifier = Modifier.size(28.dp))
-                Spacer(Modifier.width(14.dp))
-                Text("A obter áudio para o player VistaMusic")
-            } }, confirmButton = {})
     }
     if (playbackError.isNotBlank()) {
         AlertDialog(onDismissRequest = { playbackError = "" },
-            title = { Text("Não foi possível reproduzir") },
+            title = { Text("Reprodução indisponível") },
             text = { Text(playbackError) },
             confirmButton = { TextButton(onClick = { playbackError = "" }) { Text("OK") } })
-    }
-}
-
-@Composable
-private fun TitleLine(text: String) {
-    Text(text, color = White, fontWeight = FontWeight.Bold, fontSize = 21.sp,
-        modifier = Modifier.padding(horizontal = 22.dp, vertical = 3.dp))
-}
-
-@Composable
-private fun Art(song: Song, modifier: Modifier) {
-    if (song.art.isNotBlank()) {
-        AsyncImage(model = song.art, contentDescription = song.title,
-            contentScale = ContentScale.Crop, modifier = modifier.background(Elevated))
-    } else {
-        Box(modifier.background(Elevated), contentAlignment = Alignment.Center) {
-            Icon(Icons.Default.MusicNote, null, tint = Lime)
-        }
-    }
-}
-
-@Composable
-private fun SongRow(song: Song, saved: Boolean, onPlay: () -> Unit, onFavorite: () -> Unit) {
-    Row(Modifier.fillMaxWidth().clickable(onClick = onPlay)
-        .padding(horizontal = 19.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically) {
-        Art(song, Modifier.size(56.dp).clip(RoundedCornerShape(12.dp)))
-        Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f)) {
-            Text(song.title, color = White, fontWeight = FontWeight.SemiBold,
-                fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(song.artist + " · " + song.source, color = Fog, fontSize = 11.sp,
-                maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
-        IconButton(onClick = onFavorite) {
-            Icon(if (saved) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                "Favorito", tint = if (saved) Lime else Fog)
-        }
     }
 }
