@@ -112,7 +112,7 @@ enum MusicAPI {
         }
     }
 
-    static func searchITunes(_ term: String, entity: String = "song") async throws -> [ITunesItem] {
+    private static func searchITunes(_ term: String, entity: String = "song") async throws -> [ITunesItem] {
         let result = try await json(ITunesResponse.self,
             url: url("https://itunes.apple.com/search",
                      params: [.init(name: "term", value: term),
