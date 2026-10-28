@@ -83,7 +83,46 @@ class LocalTaste(private val prefs: SharedPreferences) {
         val seed = recent.firstOrNull() ?: favorites.firstOrNull()
         return candidates.distinctBy { it.id }.sortedByDescending {
             score(it, seed, favorites, candidates, recent)
-        }.take(20)
+        }.take(50)
+    }
+
+    /**
+     * Genre affinities are derived from artists in listening history and likes.
+     * This is an on-device recommendation model, not an official YouTube profile.
+     */
+    fun preferredGenres(favorites: List<Song>): List<String> {
+        val inputs = (recentlyListened() + favorites).take(30)
+        val scores = Genres.categories.map { genre ->
+            val matching = inputs.count { song ->
+                Genres.artists(genre.title).any { artist ->
+                    song.artist.contains(artist, ignoreCase = true) ||
+                        artist.contains(song.artist, ignoreCase = true)
+                }
+            }
+            genre.title to matching
+        }
+        return scores.filter { it.second > 0 }.sortedByDescending { it.second }
+            .take(3).map { it.first }
+    }
+
+    fun discoveryRank(candidates: List<Song>, favorites: List<Song>,
+                      charts: List<Song>): List<Song> {
+        val recent = recentlyListened()
+        val knownIds = (recent + favorites).map { it.id }.toSet()
+        val recentNames = recent.map {
+            it.title.lowercase().trim() + "|" + it.artist.lowercase().trim()
+        }.toSet()
+        val seen = mutableSetOf<String>()
+        val unique = candidates.filter { track ->
+            val id = track.title.lowercase().trim() + "|" + track.artist.lowercase().trim()
+            track.title.isNotBlank() && track.artist.isNotBlank() &&
+                track.id !in knownIds && id !in recentNames && seen.add(id)
+        }
+        val seed = recent.firstOrNull() ?: favorites.firstOrNull()
+        val popular = charts.distinctBy { it.id }
+        return unique.sortedByDescending {
+            score(it, seed, favorites, popular, recent)
+        }.take(40)
     }
 
     suspend fun nextSongs(
