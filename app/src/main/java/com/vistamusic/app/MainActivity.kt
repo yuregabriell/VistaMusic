@@ -496,7 +496,12 @@ private fun VistaMusicApp() {
                     albums = artistAlbums,
                     loading = artistLoading, followed = followed.contains(artistPage),
                     onFollow = { toggleFollow(artistPage!!) }, onBack = { artistPage = null },
-                    onPlay = { playSongs(artistSongs, artistSongs.indexOf(it)); playerOpen = true },
+                    onPlay = { selected ->
+                        val index = artistSongs.indexOfFirst { it.id == selected.id }
+                        if (index >= 0) playSongs(artistSongs, index)
+                        else playSongs(listOf(selected), 0)
+                        playerOpen = true
+                    },
                     onSong = ::openSong, onAlbum = ::openAlbum, onAllSongs = { artistAllOpen = true },
                     isFavorite = ::isFavorite, onFavorite = ::toggleFavorite)
                 else -> Column(Modifier.fillMaxSize()) {
