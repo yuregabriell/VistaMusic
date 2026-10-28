@@ -70,9 +70,14 @@ class MusicApi {
         includePreviews: Boolean, youtubeApiKey: String): List<Song> =
         coroutineScope {
             if (query.isBlank()) return@coroutineScope emptyList()
+            // Prioritize music-catalog song entries, not a mixture of random
+            // video uploads and community tracks.
+            val musicTracks = runCatching {
+                YouTubeCatalog.search(query, youtubeApiKey)
+            }.getOrDefault(emptyList())
+            if (musicTracks.isNotEmpty()) return@coroutineScope musicTracks
             val videos = async(Dispatchers.IO) {
-                runCatching { YouTubeCatalog.search(query, youtubeApiKey) }
-                    .getOrDefault(emptyList())
+                runCatching { NativeMusic.search(query) }.getOrDefault(emptyList())
             }
             val itunes = async(Dispatchers.IO) {
                 runCatching {
