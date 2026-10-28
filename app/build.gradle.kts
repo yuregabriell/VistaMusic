@@ -10,8 +10,8 @@ android {
         applicationId = "com.vistamusic.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 9
-        versionName = "0.9.0"
+        versionCode = 10
+        versionName = "0.10.0"
     }
     compileOptions {
         isCoreLibraryDesugaringEnabled = true
