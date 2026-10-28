@@ -399,7 +399,7 @@ fun VmTrackPage(song: Song, info: SongInfo?, lyrics: LyricSheet?,
         LazyColumn(contentPadding = PaddingValues(bottom = 26.dp)) {
             item {
                 Box(Modifier.fillMaxWidth().height(292.dp).background(Brush.verticalGradient(
-                    listOf(Color(0xFF36564B), VmBackground))), contentAlignment = Alignment.Center) {
+                    listOf(Color(0xFF663049), VmBackground))), contentAlignment = Alignment.Center) {
                     VmSongArt(song, Modifier.size(236.dp))
                 }
                 Column(Modifier.padding(horizontal = 22.dp)) {
@@ -415,6 +415,9 @@ fun VmTrackPage(song: Song, info: SongInfo?, lyrics: LyricSheet?,
                         IconButton(onClick = onFavorite) {
                             Icon(if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                                 "Favorito", tint = if (isFavorite) VmAccent else VmMuted)
+                        }
+                        IconButton(onClick = onAddToPlaylist) {
+                            Icon(Icons.Default.PlaylistAdd, "Adicionar à playlist", tint = VmAccent)
                         }
                         Spacer(Modifier.weight(1f))
                         Button(onClick = onPlay, colors = ButtonDefaults.buttonColors(
@@ -449,7 +452,7 @@ fun VmTrackPage(song: Song, info: SongInfo?, lyrics: LyricSheet?,
             item {
                 if (lyrics?.found == true) {
                     Column(Modifier.fillMaxWidth().padding(18.dp)
-                        .clip(RoundedCornerShape(22.dp)).background(Color(0xFF819F87))
+                        .clip(RoundedCornerShape(22.dp)).background(Color(0xFFAD638B))
                         .clickable(onClick = onLyrics).padding(21.dp)) {
                         Text("Letra", fontSize = 21.sp, fontWeight = FontWeight.ExtraBold, color = VmBackground)
                         Spacer(Modifier.height(15.dp))
