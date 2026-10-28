@@ -1,6 +1,10 @@
 package com.vistamusic.app
 
 import android.os.Bundle
+import android.Manifest
+import android.os.Build
+import android.content.pm.PackageManager
+import androidx.activity.result.contract.ActivityResultContracts
 import android.content.ComponentName
 import android.content.Context
 import androidx.core.content.ContextCompat
@@ -41,8 +45,17 @@ import kotlinx.coroutines.coroutineScope
 import org.json.JSONArray
 
 class MainActivity : ComponentActivity() {
+    private val notificationPermission = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { /* If denied, native controls may still appear in Android System UI. */ }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=
+                PackageManager.PERMISSION_GRANTED) {
+            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
         window.statusBarColor = android.graphics.Color.rgb(9, 11, 14)
         window.navigationBarColor = android.graphics.Color.rgb(9, 11, 14)
         setContent {
