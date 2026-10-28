@@ -322,9 +322,22 @@ private fun VistaMusicApp() {
     }
     LaunchedEffect(historyVersion) {
         val seed = taste.recentlyListened().firstOrNull() ?: favorites.firstOrNull()
-        if (seed != null && youtubeRadio.none { it.artist.equals(seed.artist, true) }) {
-            youtubeRadio = runCatching { NativeMusic.search(seed.artist + " popular songs") }
-                .getOrDefault(emptyList())
+        if (seed != null) {
+            coroutineScope {
+                val related = async {
+                    if (seed.audio.startsWith("youtube:"))
+                        runCatching {
+                            NativeMusic.relatedTo(seed.audio.removePrefix("youtube:"))
+                        }.getOrDefault(emptyList())
+                    else emptyList()
+                }
+                val artistSongs = async {
+                    runCatching { NativeMusic.search(seed.artist + " official audio") }
+                        .getOrDefault(emptyList())
+                }
+                youtubeRadio = (related.await() + artistSongs.await())
+                    .filter { it.id != seed.id }.distinctBy { it.id }.take(28)
+            }
         }
     }
     LaunchedEffect(genrePage?.title) {
