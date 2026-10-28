@@ -75,7 +75,9 @@ class VmPlaylistStore(context: Context) {
 fun VmPlaylistLibrary(
     playlists: List<VmPlaylist>,
     onCreate: () -> Unit,
-    onOpen: (VmPlaylist) -> Unit
+    onOpen: (VmPlaylist) -> Unit,
+    likedSongs: List<Song> = emptyList(),
+    onOpenLiked: () -> Unit = {}
 ) {
     Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 16.dp, top = 21.dp),
         verticalAlignment = Alignment.CenterVertically) {
@@ -87,8 +89,23 @@ fun VmPlaylistLibrary(
             Text("Criar", color = VmAccent, fontWeight = FontWeight.Bold)
         }
     }
+    Row(Modifier.fillMaxWidth().clickable(onClick = onOpenLiked)
+        .padding(horizontal = 20.dp, vertical = 9.dp),
+        verticalAlignment = Alignment.CenterVertically) {
+        VmPlaylistCover(VmPlaylist("liked", "Músicas curtidas", tracks = likedSongs),
+            Modifier.size(69.dp))
+        Spacer(Modifier.width(13.dp))
+        Column(Modifier.weight(1f)) {
+            Text("Músicas curtidas", color = VmWhite, fontSize = 16.sp,
+                fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(4.dp))
+            Text("Playlist · ${likedSongs.size} músicas",
+                color = VmMuted, fontSize = 12.sp)
+        }
+        Icon(Icons.Default.ChevronRight, null, tint = VmMuted)
+    }
     if (playlists.isEmpty()) {
-        Text("Cria uma playlist para reunir as músicas de que mais gostas.",
+        Text("Cria outras playlists com as músicas que mais gostas.",
             color = VmMuted, fontSize = 13.sp,
             modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 13.dp))
     } else {
@@ -114,6 +131,16 @@ fun VmPlaylistLibrary(
 
 @Composable
 fun VmPlaylistCover(playlist: VmPlaylist, modifier: Modifier = Modifier) {
+    if (playlist.id == "liked") {
+        Box(modifier.clip(RoundedCornerShape(12.dp))
+            .background(Brush.linearGradient(listOf(
+                Color(0xFFFF4FA3), Color(0xFF854BCB), Color(0xFF402D80)))),
+            contentAlignment = Alignment.Center) {
+            Icon(Icons.Default.Favorite, "Músicas curtidas",
+                tint = VmWhite, modifier = Modifier.fillMaxSize(.52f))
+        }
+        return
+    }
     val shown = playlist.tracks.take(4)
     if (shown.isEmpty()) {
         Box(modifier.clip(RoundedCornerShape(12.dp))
@@ -216,7 +243,8 @@ fun VmPlaylistPage(
     onAddSongs: () -> Unit,
     onOpenSong: (Song) -> Unit,
     isFavorite: (Song) -> Boolean,
-    onFavorite: (Song) -> Unit
+    onFavorite: (Song) -> Unit,
+    isSystemList: Boolean = false
 ) {
     var menu by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize().background(VmBackground)) {
@@ -246,7 +274,7 @@ fun VmPlaylistPage(
                             Icon(Icons.Default.AddCircleOutline, "Adicionar músicas",
                                 tint = VmAccent)
                         }
-                        Box {
+                        if (!isSystemList) Box {
                             IconButton(onClick = { menu = true }) {
                                 Icon(Icons.Default.MoreHoriz, "Editar playlist", tint = VmWhite)
                             }
@@ -305,13 +333,13 @@ fun VmPlaylistPage(
                             onDismissRequest = { songMenu = false }) {
                             DropdownMenuItem(text = { Text("Ver música") },
                                 onClick = { songMenu = false; onOpenSong(song) })
-                            DropdownMenuItem(text = { Text("Mover para cima") },
+                            if (!isSystemList) DropdownMenuItem(text = { Text("Mover para cima") },
                                 enabled = i > 0,
                                 onClick = { songMenu = false; onMove(i, i - 1) })
-                            DropdownMenuItem(text = { Text("Mover para baixo") },
+                            if (!isSystemList) DropdownMenuItem(text = { Text("Mover para baixo") },
                                 enabled = i < playlist.tracks.lastIndex,
                                 onClick = { songMenu = false; onMove(i, i + 1) })
-                            DropdownMenuItem(text = { Text("Remover da playlist") },
+                            DropdownMenuItem(text = { Text(if (isSystemList) "Remover dos favoritos" else "Remover da playlist") },
                                 onClick = { songMenu = false; onRemove(song) })
                         }
                     }
