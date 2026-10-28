@@ -22,6 +22,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalContext
+import coil.request.ImageRequest
+import kotlinx.coroutines.launch
 import coil.compose.AsyncImage
 
 val VmBackground = Color(0xFF090B0E)
@@ -44,43 +47,75 @@ fun VmArt(url: String, modifier: Modifier = Modifier, circular: Boolean = false)
 
 @Composable
 fun VmSongArt(song: Song, modifier: Modifier = Modifier) {
-    // This initialization also hides video thumbnails in locally saved favorites
-    // created by older versions of VistaMusic.
-    val initial = if (song.id.startsWith("youtube:")) "" else song.art
-    val artwork by produceState(initialValue = initial,
+    val primary by produceState(initialValue = "",
         key1 = song.id, key2 = song.title, key3 = song.artist) {
         value = AlbumArtwork.resolve(song)
     }
+    var replacement by remember(song.id, song.title, song.artist) {
+        mutableStateOf<String?>(null)
+    }
+    val artwork = replacement ?: primary
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+
     if (artwork.isNotBlank()) {
-        VmArt(artwork, modifier)
-    } else {
-        val shades = listOf(
-            listOf(Color(0xFF386B68), Color(0xFF1C2E40)),
-            listOf(Color(0xFF574A77), Color(0xFF242C42)),
-            listOf(Color(0xFF87565A), Color(0xFF44324A)),
-            listOf(Color(0xFF566642), Color(0xFF233C45))
-        )
-        val colors = shades[(song.id.hashCode().toLong().let {
-            kotlin.math.abs(it) } % shades.size).toInt()]
-        BoxWithConstraints(
-            modifier.clip(RoundedCornerShape(14.dp))
-                .background(Brush.linearGradient(colors)),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(Icons.Default.DiscFull, null,
-                tint = VmWhite.copy(alpha = .27f),
-                modifier = Modifier.fillMaxSize(.65f))
-            if (maxWidth >= 100.dp) {
-                Column(Modifier.align(Alignment.BottomStart)
-                    .fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp)) {
-                    Text(LyricsApi.cleanTitle(song.title, song.artist),
-                        color = VmWhite, fontWeight = FontWeight.ExtraBold,
-                        fontSize = 12.sp, maxLines = 2,
-                        overflow = TextOverflow.Ellipsis)
-                    Text(song.artist, color = VmWhite.copy(alpha = .79f),
-                        fontSize = 10.sp, maxLines = 1,
-                        overflow = TextOverflow.Ellipsis)
+        Box(modifier.clip(RoundedCornerShape(14.dp))
+            .background(Color(0xFF293433)), contentAlignment = Alignment.Center) {
+            AsyncImage(
+                model = remember(artwork, context) {
+                    ImageRequest.Builder(context).data(artwork)
+                        .crossfade(180).build()
+                },
+                contentDescription = "Capa de ${song.title}",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+                onError = {
+                    if (replacement == null) {
+                        scope.launch {
+                            val other = runCatching {
+                                AlbumArtwork.alternate(song)
+                            }.getOrDefault("")
+                            replacement = other.takeIf { it.isNotBlank() && it != artwork } ?: ""
+                        }
+                    } else {
+                        replacement = ""
+                    }
                 }
+            )
+        }
+    } else {
+        VmNeutralArtwork(song, modifier)
+    }
+}
+
+@Composable
+private fun VmNeutralArtwork(song: Song, modifier: Modifier = Modifier) {
+    val shades = listOf(
+        listOf(Color(0xFF386B68), Color(0xFF1C2E40)),
+        listOf(Color(0xFF574A77), Color(0xFF242C42)),
+        listOf(Color(0xFF87565A), Color(0xFF44324A)),
+        listOf(Color(0xFF566642), Color(0xFF233C45))
+    )
+    val colors = shades[(kotlin.math.abs(song.id.hashCode().toLong()) %
+        shades.size).toInt()]
+    BoxWithConstraints(
+        modifier.clip(RoundedCornerShape(14.dp))
+            .background(Brush.linearGradient(colors)),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(Icons.Default.DiscFull, null,
+            tint = VmWhite.copy(alpha = .27f),
+            modifier = Modifier.fillMaxSize(.65f))
+        if (maxWidth >= 100.dp) {
+            Column(Modifier.align(Alignment.BottomStart)
+                .fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp)) {
+                Text(LyricsApi.cleanTitle(song.title, song.artist),
+                    color = VmWhite, fontWeight = FontWeight.ExtraBold,
+                    fontSize = 12.sp, maxLines = 2,
+                    overflow = TextOverflow.Ellipsis)
+                Text(song.artist, color = VmWhite.copy(alpha = .79f),
+                    fontSize = 10.sp, maxLines = 1,
+                    overflow = TextOverflow.Ellipsis)
             }
         }
     }
