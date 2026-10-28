@@ -99,6 +99,30 @@ object AlbumArtwork {
         } finally { connection.disconnect() }
     }
 
+    private fun searchITunes(artist: String, title: String): String {
+        val q = URLEncoder.encode("$artist $title", "UTF-8")
+        val connection = URL("https://itunes.apple.com/search?term=$q&entity=song&limit=30&country=US")
+            .openConnection() as HttpURLConnection
+        connection.connectTimeout = 4500
+        connection.readTimeout = 5500
+        connection.setRequestProperty("User-Agent", "VistaMusic/0.10")
+        return try {
+            if (connection.responseCode !in 200..299) return ""
+            val items = JSONObject(connection.inputStream.bufferedReader().use {
+                it.readText()
+            }).optJSONArray("results") ?: return ""
+            for (i in 0 until items.length()) {
+                val j = items.optJSONObject(i) ?: continue
+                if (!sameArtist(j.optString("artistName"), artist) ||
+                    !sameTitle(j.optString("trackName"), title)) continue
+                val url = j.optString("artworkUrl100")
+                    .replace("100x100bb", "600x600bb")
+                if (url.startsWith("https://")) return url
+            }
+            ""
+        } finally { connection.disconnect() }
+    }
+
     suspend fun resolve(song: Song): String {
         if (!song.id.startsWith("youtube:")) return song.art
         val artist = cleanArtist(song.artist)
@@ -123,6 +147,9 @@ object AlbumArtwork {
                     }.getOrDefault("")
                     if (resolved.isNotBlank()) break
                 }
+                if (resolved.isBlank()) resolved = runCatching {
+                    searchITunes(artist, title)
+                }.getOrDefault("")
                 resolved
             }
             cache[key] = image
