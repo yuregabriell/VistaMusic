@@ -1,4 +1,4 @@
-# VistaMusic v0.6.0
+# VistaMusic v0.7.0
 
 Aplicação Android experimental de música com interface premium em **Kotlin, Jetpack Compose e Media3**, sem backend próprio nem base de dados central.
 
@@ -24,13 +24,13 @@ Aplicação Android experimental de música com interface premium em **Kotlin, J
 As recomendações são heurísticas e não equivalem ao Spotify ou a modelos de IA externos. Nem todos os artistas, fotos, álbuns e faixas terão metadados completos. As faixas descobertas nas APIs de catálogo podem não ter um stream reproduzível.
 
 ## Build e Release
-O GitHub Actions `.github/workflows/android.yml` publica um APK de depuração em `v0.6.0` quando o build passa. A assinatura debug gerada em cada build **não é estável**: instalar versões subsequentes pode exigir desinstalar a anterior e perder preferências locais.
+O GitHub Actions `.github/workflows/android.yml` publica um APK de depuração em `v0.7.0` quando o build passa. A assinatura debug gerada em cada build **não é estável**: instalar versões subsequentes pode exigir desinstalar a anterior e perder preferências locais.
 
 ## Licença
 GPL-3.0, com dependência GPL-3.0 do NewPipeExtractor. Uso de terceiros sujeito aos respetivos termos e atribuições. Projeto não afiliado a Spotify, Google/YouTube, Apple, Audius ou TheAudioDB.
 
 
-## Novidades v0.6.0
+## Novidades v0.7.0
 
 - YouTube Trending Music, via módulo **YoutubeTrendingMusicExtractor** do NewPipeExtractor, por região PT/US. A secção distingue os YouTube Charts do ranking Apple Music usado como alternativa quando a extração falha. Não é a Home personalizada da conta YouTube Music.
 - Perfil de artista com **até 10 faixas**, unindo pesquisa de vídeos do YouTube ordenada por visualizações da amostra, ranking TheAudioDB e discografia iTunes. Não afirmar que as faixas representam o ranking oficial completo da carreira de cada artista.
@@ -39,3 +39,15 @@ GPL-3.0, com dependência GPL-3.0 do NewPipeExtractor. Uso de terceiros sujeito 
 - Rádio automática tenta utilizar também **relatedItems** do vídeo YouTube que foi reproduzido; continua a depender das fontes não oficiais e dos limites técnicos e de utilização destas.
 
 A experiência ainda não usa autenticação do YouTube Music, portanto não consegue importar o feed pessoal ou as recomendações privadas da conta. Os rankings musicais da plataforma e as sugestões pessoais do VistaMusic são conceitos distintos.
+
+## Revisão v0.7.0
+- Home: um único **Em alta agora · YouTube Charts EUA**, sem duplicação de Portugal; se o chart não estiver disponível, não se fazem afirmações falsas sobre rankings.
+- O destaque da Home escolhe um tema a partir de sinais **locais** (histórico, favoritos e artistas/géneros relacionados); muda a seleção após reproduções, e usa uma alternativa não personalizada quando ainda não há histórico.
+- Mais sons para descobrir: somente faixas obtidas do **YouTube Charts dos EUA**, não da fonte independente Audius. Não é uma lista oficial de lançamentos recentes.
+- Capas: para faixas cujo áudio venha de vídeos do YouTube, procurar correspondência de **música + artista** no catálogo público Deezer e apresentar a capa quadrada de álbum quando corresponder. Preservar a miniatura original se a correspondência ou API falharem. A arte é propriedade dos respetivos titulares; verificar termos antes de distribuição pública ou comercial.
+- Todos os cartões de músicas, mini-player e player expandido reutilizam um componente de capa com cache e limitação de pedidos.
+- A barra inferior no ecrã Explorar fecha corretamente a página do género ao mudar para Home/Pesquisar/Biblioteca.
+- O ícone de Definições só aparece ao visitar a Biblioteca.
+- O ranking pessoal local pondera também afinidades de género editorial e músicas relacionadas no YouTube (quando disponíveis). Continua a ser uma heurística, não a personalização de uma conta autenticada do YouTube Music.
+
+Os dados, links e fluxos de vídeo associados a integrações não oficiais podem mudar a qualquer momento. A compilação bem-sucedida não garante que todas as chamadas externas ou todos os audios funcionem num dispositivo real.
