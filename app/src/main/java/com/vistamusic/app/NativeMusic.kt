@@ -92,7 +92,18 @@ object NativeMusic {
     }
 
     suspend fun search(query: String): List<Song> = withContext(Dispatchers.IO) {
-        sourceSearch(query.trim() + " official audio")
+        val musicTracks = runCatching { YouTubeMusicSongs.search(query.trim(), 30) }
+            .getOrDefault(emptyList())
+        // Do not blend the generic video search when Music Songs succeeds:
+        // prioritise real track entries and avoid intros in music videos.
+        if (musicTracks.isNotEmpty()) return@withContext musicTracks
+        sourceSearch(query.trim() + " topic official audio")
+            .filterNot { item ->
+                val name = item.name.lowercase()
+                listOf("official music video", "music video", "vevo",
+                    "behind the scenes", "reaction", "live performance",
+                    "trailer", "teaser").any { name.contains(it) }
+            }
             .mapNotNull(::infoToSong)
             .distinctBy { it.id }.take(28)
     }
@@ -111,12 +122,45 @@ object NativeMusic {
         song.title.lowercase().replace(Regex("\\([^)]*\\)"), "")
             .replace(Regex("[^\\p{L}\\p{N}]+"), " ").trim()
 
+    private fun standard(s: String): String = s.lowercase()
+        .replace(Regex("""\([^)]*\)"""), "")
+        .replace(Regex("""[^\p{L}\p{N}]+"""), " ").trim()
+
+    private fun trackMatch(query: Song, option: Song): Boolean {
+        val title = standard(query.title)
+        val other = standard(option.title)
+        val artist = standard(query.artist).replace(" ", "")
+        val candidate = standard(option.artist).replace(" ", "")
+        return title.length > 2 && artist.length > 2 &&
+            (title == other || (title.length > 7 && other.startsWith(title))) &&
+            (candidate == artist ||
+                (artist.length >= 6 && candidate.contains(artist)) ||
+                (candidate.length >= 6 && artist.contains(candidate)))
+    }
+
+    /**
+     * Prefer the audio track from the Music Songs catalog for any YouTube video,
+     * including artist-top results, charts, radio and older saved favourites.
+     */
+    suspend fun musicVersion(song: Song): Song = withContext(Dispatchers.IO) {
+        if (song.source.contains("YouTube Music") && song.audio.startsWith("youtube:"))
+            return@withContext song
+        val q = song.artist + " " + LyricsApi.cleanTitle(song.title, song.artist)
+        val tracks = runCatching { YouTubeMusicSongs.search(q, 15) }
+            .getOrDefault(emptyList())
+        tracks.firstOrNull { trackMatch(song, it) } ?: song
+    }
+
     suspend fun popularArtist(name: String): List<PopularTrack> = coroutineScope {
         val searches = listOf(
             "$name official music video",
             "$name official audio",
             "$name topic song"
         )
+        val musicCatalog = async(Dispatchers.IO) {
+            runCatching { YouTubeMusicSongs.search(name + " songs", 25) }
+                .getOrDefault(emptyList())
+        }
         val found = searches.map { q -> async(Dispatchers.IO) {
             runCatching {
                 sourceSearch(q).filter { matchArtist(it, name) }
@@ -127,9 +171,17 @@ object NativeMusic {
         }}.map { it.await() }.flatten()
         // Number of views only applies to each discovered YouTube video, not to the
         // artist's song across all uploads. Sorting is a sampled popularity estimate.
-        found.sortedWith(compareByDescending<PopularTrack> { it.views }
+        val sorted = found.sortedWith(compareByDescending<PopularTrack> { it.views }
             .thenBy { it.song.title })
-            .distinctBy { songKey(it.song) }.take(12)
+        val music = musicCatalog.await()
+        // Search result rank is not an official view count. Preserve YouTube
+        // views only for tracks that match a discovered music song.
+        val preferred = sorted.map { item ->
+            val match = music.firstOrNull { trackMatch(item.song, it) }
+            if (match != null) item.copy(song = match) else item
+        }
+        (preferred + music.map { PopularTrack(it, 0L) })
+            .distinctBy { songKey(it.song) }.take(15)
     }
 
     suspend fun trending(country: String = "PT"): List<Song> =
@@ -152,10 +204,15 @@ object NativeMusic {
         val extractor = ServiceList.YouTube.getStreamExtractor(
             "https://www.youtube.com/watch?v=$id")
         extractor.fetchPage()
-        extractor.relatedItems?.items.orEmpty().filterIsInstance<StreamInfoItem>()
+        val generic = extractor.relatedItems?.items.orEmpty().filterIsInstance<StreamInfoItem>()
             .filter { it.duration in 90L..900L || it.duration == -1L }
             .mapNotNull(::infoToSong)
             .filterNot { it.audio == "youtube:$id" }
+        val seed = generic.firstOrNull()
+        val music = if (seed != null) runCatching {
+            YouTubeMusicSongs.search(seed.artist + " songs", 20)
+        }.getOrDefault(emptyList()) else emptyList()
+        (music + generic.filter { !it.title.contains("music video", true) })
             .distinctBy { it.id }.take(30)
     }
 
