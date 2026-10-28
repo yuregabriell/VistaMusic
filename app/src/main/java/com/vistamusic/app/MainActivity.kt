@@ -281,9 +281,9 @@ private fun VistaMusicApp(
     }
     fun goBack() {
         when {
-            selectedPlaylistId != null -> selectedPlaylistId = null
             lyricsOpen -> lyricsOpen = false
             playerOpen -> playerOpen = false
+            selectedPlaylistId != null -> selectedPlaylistId = null
             artistAllOpen -> artistAllOpen = false
             genrePage != null -> genrePage = null
             songPage != null -> songPage = null
@@ -755,7 +755,8 @@ private fun VistaMusicApp(
                             items(freshYoutube) { song ->
                                 VmSongRow(song, isFavorite(song),
                                     { playSongs(listOf(song), 0) },
-                                    { openSong(song) }, { toggleFavorite(song) })
+                                    { openSong(song) }, { toggleFavorite(song) },
+                                    onAddToPlaylist = { askAddToPlaylist(song) })
                             }
                         }
                         1 -> Column {
@@ -822,7 +823,8 @@ private fun VistaMusicApp(
                                     items(searchResults) { song ->
                                         VmSongRow(song, isFavorite(song),
                                             { playSongs(listOf(song), 0) },
-                                            { openSong(song) }, { toggleFavorite(song) })
+                                            { openSong(song) }, { toggleFavorite(song) },
+                                            onAddToPlaylist = { askAddToPlaylist(song) })
                                     }
                                     if (searchResults.isEmpty() && albumResults.isEmpty() &&
                                         suggestions == null) item {
@@ -837,6 +839,10 @@ private fun VistaMusicApp(
                                 Text("A tua biblioteca", color = VmWhite, fontSize = 29.sp,
                                     fontWeight = FontWeight.ExtraBold,
                                     modifier = Modifier.padding(horizontal = 20.dp, vertical = 18.dp))
+                                VmPlaylistLibrary(playlists,
+                                    onCreate = { songForNewPlaylist = null; showCreatePlaylist = true },
+                                    onOpen = { selectedPlaylistId = it.id })
+                                Spacer(Modifier.height(14.dp))
                                 if (followed.isNotEmpty()) {
                                     VmHeading("Artistas seguidos", Modifier.padding(20.dp))
                                     followed.forEach { name ->
@@ -854,14 +860,15 @@ private fun VistaMusicApp(
                             items(favorites.toList()) { song ->
                                 VmSongRow(song, true,
                                     { playSongs(favorites.toList(), favorites.indexOf(song)) },
-                                    { openSong(song) }, { toggleFavorite(song) })
+                                    { openSong(song) }, { toggleFavorite(song) },
+                                    onAddToPlaylist = { askAddToPlaylist(song) })
                             }
                         }
                         else -> Column(Modifier.verticalScroll(rememberScrollState()).padding(22.dp)) {
                             Text("Definições", color = VmWhite, fontSize = 29.sp,
                                 fontWeight = FontWeight.ExtraBold)
                             Spacer(Modifier.height(18.dp))
-                            Text("VistaMusic 0.7.0", color = VmAccent, fontWeight = FontWeight.Bold)
+                            Text("VistaMusic 0.13.0", color = VmAccent, fontWeight = FontWeight.Bold)
                             Spacer(Modifier.height(15.dp))
                             Text("Música, letras e biblioteca sem servidor próprio.",
                                 color = VmMuted)
@@ -923,6 +930,8 @@ private fun VistaMusicApp(
                     Triple("Biblioteca", Icons.Default.LibraryMusic, 2)).forEach { (title, icon, idx) ->
                     NavigationBarItem(selected = tab == idx, onClick = {
                         tab = idx
+                        selectedPlaylistId = null
+                        playlistAddTarget = null
                         genrePage = null
                         artistPage = null
                         artistAllOpen = false
@@ -939,6 +948,60 @@ private fun VistaMusicApp(
                 }
             }
         }
+    }
+    if (showCreatePlaylist) {
+        VmPlaylistEditorDialog("", "", "Nova playlist",
+            onDismiss = { showCreatePlaylist = false; songForNewPlaylist = null },
+            onSave = { name, description ->
+                val created = playlistStore.create(name, description)
+                val firstTrack = songForNewPlaylist
+                updatePlaylists { all ->
+                    all + (if (firstTrack == null) created
+                        else created.copy(tracks = listOf(firstTrack)))
+                }
+                showCreatePlaylist = false
+                songForNewPlaylist = null
+                selectedPlaylistId = created.id
+            })
+    }
+    val editable = playlists.firstOrNull { it.id == editingPlaylistId }
+    if (editable != null) {
+        VmPlaylistEditorDialog(editable.name, editable.description, "Editar playlist",
+            onDismiss = { editingPlaylistId = null },
+            onSave = { name, description ->
+                updatePlaylists { all -> all.map {
+                    if (it.id == editable.id)
+                        it.copy(name = name, description = description) else it
+                } }
+                editingPlaylistId = null
+            })
+    }
+    val deleting = playlists.firstOrNull { it.id == deletingPlaylistId }
+    if (deleting != null) {
+        AlertDialog(onDismissRequest = { deletingPlaylistId = null },
+            title = { Text("Eliminar playlist?") },
+            text = { Text("A playlist \"${deleting.name}\" será eliminada. As músicas não serão apagadas da biblioteca.") },
+            dismissButton = { TextButton(onClick = { deletingPlaylistId = null }) {
+                Text("Cancelar")
+            } },
+            confirmButton = { TextButton(onClick = {
+                updatePlaylists { all -> all.filterNot { it.id == deleting.id } }
+                selectedPlaylistId = null
+                deletingPlaylistId = null
+            }) { Text("Eliminar", color = VmAccent) } })
+    }
+    addingSong?.let { song ->
+        VmPlaylistPickerDialog(song, playlists,
+            onDismiss = { addingSong = null },
+            onPick = { pl ->
+                addSong(pl.id, song)
+                addingSong = null
+            },
+            onCreate = {
+                addingSong = null
+                songForNewPlaylist = song
+                showCreatePlaylist = true
+            })
     }
     if (playbackError.isNotBlank()) {
         AlertDialog(onDismissRequest = { playbackError = "" },
