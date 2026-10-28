@@ -20,6 +20,29 @@ import java.util.concurrent.ConcurrentHashMap
 object AlbumArtwork {
     private val cache = ConcurrentHashMap<String, String>()
     private val limiter = Semaphore(3)
+    private val catalogCache = ConcurrentHashMap<String, String>()
+
+    /**
+     * YouTube Music image URLs typically contain a small requested thumbnail
+     * size (e.g. w120-h120). Request a new rendition from the original image,
+     * never upscale a downloaded 120px bitmap in the UI.
+     */
+    fun highResolution(url: String, size: Int = 1000): String {
+        if (!url.startsWith("https://")) return ""
+        val host = runCatching { URL(url).host.lowercase() }.getOrDefault("")
+        if (host.endsWith(".googleusercontent.com") || host == "lh3.googleusercontent.com") {
+            return url.replace(Regex("""=w\d+-h\d+[^?&#]*"""),
+                "=w${size}-h${size}-l90-rj")
+                .replace(Regex("""=s\d+(?:-c)?$"""), "=s${size}-c")
+        }
+        return url.replace(Regex("""\d{2,4}x\d{2,4}bb"""), "${size}x${size}bb")
+    }
+
+    private fun canonicalTitle(name: String): String {
+        return name.replace(Regex("""(?i)\s*(?:ft\.?|feat\.?|featuring|with)\s+.+$"""), "")
+            .replace(Regex("""(?i)\s*\((?:official|audio|music video|lyric video)[^)]*\)"""), "")
+            .trim().trimEnd('(', ')', '-', '–', ',', ' ')
+    }
 
     private fun normalize(input: String): String =
         Normalizer.normalize(input.lowercase(), Normalizer.Form.NFD)
@@ -44,7 +67,7 @@ object AlbumArtwork {
             Regex("""\s*[\[(](?:official|audio|visualizer|lyrics|lyric video|music video|4k|hd)[^\])]*[\])]""",
                 RegexOption.IGNORE_CASE), "")
         result = result.replace(Regex("""(?i)\s*(?:\||-)\s*(?:official\s*)?(?:music\s*)?video.*$"""), "")
-        return result.trim().take(130)
+        return canonicalTitle(result).take(130)
     }
 
     private fun sameArtist(found: String, expected: String): Boolean {
@@ -59,9 +82,9 @@ object AlbumArtwork {
     }
 
     private fun sameTitle(found: String, expected: String): Boolean {
-        val a = compact(found.replace(
-            Regex("""(?i)\s*\((?:remastered|deluxe|explicit)[^)]*\)"""), ""))
-        val b = compact(expected)
+        val a = compact(canonicalTitle(found.replace(
+            Regex("""(?i)\s*\((?:remastered|deluxe|explicit)[^)]*\)"""), "")))
+        val b = compact(canonicalTitle(expected))
         return a.isNotBlank() && b.length >= 3 &&
             (a == b || (b.length >= 8 && a.startsWith(b) && a.length - b.length < 12))
     }
@@ -116,20 +139,41 @@ object AlbumArtwork {
                 if (!sameArtist(j.optString("artistName"), artist) ||
                     !sameTitle(j.optString("trackName"), title)) continue
                 val url = j.optString("artworkUrl100")
-                    .replace("100x100bb", "600x600bb")
+                    .replace("100x100bb", "1000x1000bb")
                 if (url.startsWith("https://")) return url
             }
             ""
         } finally { connection.disconnect() }
     }
 
+    suspend fun alternate(song: Song): String = withContext(Dispatchers.IO) {
+        val artist = cleanArtist(song.artist)
+        val title = cleanTitle(song)
+        if (artist.isBlank() || title.isBlank()) return@withContext ""
+        val key = compact(artist) + "|" + compact(title)
+        catalogCache[key]?.let { return@withContext it }
+        limiter.withPermit {
+            catalogCache[key]?.let { return@withPermit it }
+            var result = ""
+            for (query in listOf("$artist $title", title)) {
+                result = runCatching { searchDeezer(query, artist, title) }.getOrDefault("")
+                if (result.isNotBlank()) break
+            }
+            if (result.isBlank()) result = runCatching {
+                searchITunes(artist, title)
+            }.getOrDefault("")
+            catalogCache[key] = result
+            result
+        }
+    }
+
     suspend fun resolve(song: Song): String {
-        if (!song.id.startsWith("youtube:")) return song.art
+        if (!song.id.startsWith("youtube:")) return highResolution(song.art)
         val artist = cleanArtist(song.artist)
         val title = cleanTitle(song)
         if (artist.isBlank() || title.isBlank()) return ""
         if (song.source.contains("YouTube Music") && song.art.startsWith("https://"))
-            return song.art
+            return highResolution(song.art)
         val key = compact(artist) + "|" + compact(title)
         cache[key]?.let { return it }
         return limiter.withPermit {
@@ -139,17 +183,9 @@ object AlbumArtwork {
                 val musicTrack = runCatching { NativeMusic.musicVersion(song) }.getOrNull()
                 if (musicTrack != null && musicTrack.source.contains("YouTube Music") &&
                     musicTrack.art.startsWith("https://")) {
-                    resolved = musicTrack.art
+                    resolved = highResolution(musicTrack.art)
                 }
-                if (resolved.isBlank()) for (query in listOf("$artist $title", title)) {
-                    resolved = runCatching {
-                        searchDeezer(query, artist, title)
-                    }.getOrDefault("")
-                    if (resolved.isNotBlank()) break
-                }
-                if (resolved.isBlank()) resolved = runCatching {
-                    searchITunes(artist, title)
-                }.getOrDefault("")
+                if (resolved.isBlank()) resolved = alternate(song)
                 resolved
             }
             cache[key] = image
