@@ -1,0 +1,74 @@
+name: Build iOS preview and publish unsigned IPA
+
+on:
+  push:
+    branches: [ios-swiftui, main]
+    paths:
+      - 'ios/**'
+      - '.github/workflows/ios.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: vistamusic-ios-preview
+  cancel-in-progress: true
+
+jobs:
+  ios:
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Generate Xcode project
+        run: |
+          cd ios
+          xcodegen generate
+      - name: Build unsigned iPhone app
+        run: |
+          xcodebuild \
+            -project ios/VistaMusic.xcodeproj \
+            -scheme VistaMusic \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$PWD/build/ios" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            build
+      - name: Package IPA for local re-signing
+        run: |
+          mkdir -p release/Payload
+          cp -R build/ios/Build/Products/Release-iphoneos/VistaMusic.app release/Payload/
+          cd release
+          zip -qry VistaMusic-iOS-v0.1.0-unsigned.ipa Payload
+          rm -rf Payload
+      - uses: actions/upload-artifact@v4
+        with:
+          name: VistaMusic-iOS-v0.1.0-unsigned
+          path: release/VistaMusic-iOS-v0.1.0-unsigned.ipa
+          if-no-files-found: error
+      - name: Publish iOS preview Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ios-v0.1.0-preview
+          target_commitish: ${{ github.sha }}
+          name: VistaMusic iOS v0.1.0 — Preview
+          prerelease: true
+          generate_release_notes: false
+          body: |
+            Primeira porta nativa SwiftUI para iPhone. Pesquisa, capas de álbuns,
+            charts Apple Music PT/EUA, streaming de faixas Audius disponíveis,
+            prévias iTunes, playlists, favoritos e controlos no ecrã bloqueado.
+
+            **IPA NÃO ASSINADO:** precisa de assinatura por um Apple ID ou
+            certificado/perfil de desenvolvimento e ferramenta de instalação
+            compatível. Não instala diretamente ao tocar no download.
+            Sem Vista ID cloud nesta prévia; dados locais separados do Android.
+            YouTube Music/NewPipe Android não foram portados para iOS.
+            Build automatizado não substitui testes em iPhone real.
+          files: release/VistaMusic-iOS-v0.1.0-unsigned.ipa
+          overwrite_files: true

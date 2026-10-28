@@ -1,0 +1,34 @@
+name: VistaMusic
+options:
+  bundleIdPrefix: com.vistamusic
+  deploymentTarget:
+    iOS: "16.0"
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+targets:
+  VistaMusic:
+    type: application
+    platform: iOS
+    deploymentTarget: "16.0"
+    sources:
+      - path: VistaMusic
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.vistamusic.ios
+        TARGETED_DEVICE_FAMILY: "1"
+        ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS: "NO"
+        CODE_SIGN_STYLE: Automatic
+    info:
+      path: VistaMusic/Info.plist
+      properties:
+        CFBundleDisplayName: VistaMusic
+        LSRequiresIPhoneOS: true
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        UIBackgroundModes:
+          - audio
+        UIUserInterfaceStyle: Dark
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: false
