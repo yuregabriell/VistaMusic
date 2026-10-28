@@ -65,6 +65,12 @@ class MainActivity : ComponentActivity() {
                 PackageManager.PERMISSION_GRANTED) {
             notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
+        val vistaTvMode =
+            (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_TYPE_MASK) ==
+                android.content.res.Configuration.UI_MODE_TYPE_TELEVISION
+        if (vistaTvMode) {
+            requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        }
         window.statusBarColor = android.graphics.Color.rgb(9, 11, 14)
         window.navigationBarColor = android.graphics.Color.rgb(9, 11, 14)
         setContent {
@@ -73,7 +79,18 @@ class MainActivity : ComponentActivity() {
                     primary = VmAccent, onPrimary = VmBackground,
                     background = VmBackground, surface = VmCard,
                     onSurface = VmWhite, onBackground = VmWhite)
-            ) { VistaMusicApp(openPlayerRequest) { openPlayerRequest = false } }
+            ) {
+                if (vistaTvMode) {
+                    Box(Modifier.fillMaxSize().background(VmBackground),
+                        contentAlignment = Alignment.Center) {
+                        Box(Modifier.widthIn(max = 1120.dp).fillMaxHeight()) {
+                            VistaMusicApp(openPlayerRequest) { openPlayerRequest = false }
+                        }
+                    }
+                } else {
+                    VistaMusicApp(openPlayerRequest) { openPlayerRequest = false }
+                }
+            }
         }
     }
 }
