@@ -202,7 +202,8 @@ fun VmArtistPage(
     loading: Boolean, followed: Boolean, onFollow: () -> Unit, onBack: () -> Unit,
     onPlay: (Song) -> Unit, onSong: (Song) -> Unit,
     onAlbum: (AlbumInfo) -> Unit, onAllSongs: () -> Unit,
-    isFavorite: (Song) -> Boolean, onFavorite: (Song) -> Unit
+    isFavorite: (Song) -> Boolean, onFavorite: (Song) -> Unit,
+    onAddToPlaylist: (Song) -> Unit = {}
 ) {
     val realTop = isTopSampled && topSongs.size >= 5
     val highlighted = topSongs.take(10).ifEmpty { songs.take(10) }
@@ -258,7 +259,8 @@ fun VmArtistPage(
                 items(highlighted.size) { index ->
                     val song = highlighted[index]
                     VmSongRow(song, isFavorite(song), { onPlay(song) },
-                        { onSong(song) }, { onFavorite(song) }, if (realTop) index + 1 else null)
+                        { onSong(song) }, { onFavorite(song) }, if (realTop) index + 1 else null,
+                        onAddToPlaylist = { onAddToPlaylist(song) })
                 }
             }
             if (albums.isNotEmpty()) {
@@ -304,7 +306,8 @@ fun VmArtistPage(
 @Composable
 fun VmAllArtistSongsPage(name: String, songs: List<Song>, onBack: () -> Unit,
     onPlay: (Song) -> Unit, onSong: (Song) -> Unit,
-    isFavorite: (Song) -> Boolean, onFavorite: (Song) -> Unit) {
+    isFavorite: (Song) -> Boolean, onFavorite: (Song) -> Unit,
+    onAddToPlaylist: (Song) -> Unit = {}) {
     Column(Modifier.fillMaxSize().background(VmBackground)) {
         VmBackBar(name, onBack)
         LazyColumn(contentPadding = PaddingValues(bottom = 22.dp)) {
@@ -315,7 +318,7 @@ fun VmAllArtistSongsPage(name: String, songs: List<Song>, onBack: () -> Unit,
             }
             items(songs) { song ->
                 VmSongRow(song, isFavorite(song), { onPlay(song) }, { onSong(song) },
-                    { onFavorite(song) })
+                    { onFavorite(song) }, onAddToPlaylist = { onAddToPlaylist(song) })
             }
         }
     }
@@ -336,7 +339,8 @@ fun VmArtistAvatar(url: String, modifier: Modifier = Modifier) {
 fun VmAlbumPage(album: AlbumInfo, songs: List<Song>, loading: Boolean,
                 onBack: () -> Unit, onArtist: (String) -> Unit,
                 onPlay: (Song) -> Unit, onSong: (Song) -> Unit,
-                isFavorite: (Song) -> Boolean, onFavorite: (Song) -> Unit) {
+                isFavorite: (Song) -> Boolean, onFavorite: (Song) -> Unit,
+                onAddToPlaylist: (Song) -> Unit = {}) {
     Column(Modifier.fillMaxSize().background(VmBackground)) {
         VmBackBar("Álbum", onBack)
         LazyColumn(contentPadding = PaddingValues(bottom = 26.dp)) {
@@ -373,7 +377,8 @@ fun VmAlbumPage(album: AlbumInfo, songs: List<Song>, loading: Boolean,
             items(songs.size) { i ->
                 val song = songs[i]
                 VmSongRow(song, isFavorite(song), { onPlay(song) },
-                    { onSong(song) }, { onFavorite(song) }, i + 1)
+                    { onSong(song) }, { onFavorite(song) }, i + 1,
+                    onAddToPlaylist = { onAddToPlaylist(song) })
             }
             if (!loading && songs.isEmpty()) item {
                 Text("Não foi possível carregar as músicas deste álbum.",
@@ -387,7 +392,8 @@ fun VmAlbumPage(album: AlbumInfo, songs: List<Song>, loading: Boolean,
 fun VmTrackPage(song: Song, info: SongInfo?, lyrics: LyricSheet?,
     onBack: () -> Unit, onPlay: () -> Unit,
     onArtist: (String) -> Unit, onAlbum: () -> Unit,
-    onLyrics: () -> Unit, isFavorite: Boolean, onFavorite: () -> Unit) {
+    onLyrics: () -> Unit, isFavorite: Boolean, onFavorite: () -> Unit,
+    onAddToPlaylist: () -> Unit = {}) {
     Column(Modifier.fillMaxSize().background(VmBackground)) {
         VmBackBar("Sobre a música", onBack)
         LazyColumn(contentPadding = PaddingValues(bottom = 26.dp)) {
