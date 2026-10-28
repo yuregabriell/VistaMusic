@@ -21,6 +21,7 @@ object AlbumArtwork {
     private val cache = ConcurrentHashMap<String, String>()
     private val limiter = Semaphore(3)
     private val catalogCache = ConcurrentHashMap<String, String>()
+    private val catalogLimiter = Semaphore(3)
 
     /**
      * YouTube Music image URLs typically contain a small requested thumbnail
@@ -152,7 +153,7 @@ object AlbumArtwork {
         if (artist.isBlank() || title.isBlank()) return@withContext ""
         val key = compact(artist) + "|" + compact(title)
         catalogCache[key]?.let { return@withContext it }
-        limiter.withPermit {
+        catalogLimiter.withPermit {
             catalogCache[key]?.let { return@withPermit it }
             var result = ""
             for (query in listOf("$artist $title", title)) {
