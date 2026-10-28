@@ -32,6 +32,8 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.9.3")
     implementation("androidx.media3:media3-exoplayer:1.5.1")
     implementation("androidx.media3:media3-common:1.5.1")
+    implementation("androidx.media3:media3-session:1.5.1")
+    implementation("com.google.guava:guava:33.4.0-android")
     implementation("io.coil-kt:coil-compose:2.7.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("com.github.TeamNewPipe:NewPipeExtractor:0.26.5")
