@@ -31,8 +31,8 @@ val VmBackground = Color(0xFF090B0E)
 val VmCard = Color(0xFF191D21)
 val VmMuted = Color(0xFFA1A5A9)
 val VmWhite = Color(0xFFF7F8F8)
-val VmAccent = Color(0xFFB5F56F)
-val VmDarkGreen = Color(0xFF163D31)
+val VmAccent = Color(0xFFFF4FA3)
+val VmDarkGreen = Color(0xFF5A2043)
 
 @Composable
 fun VmArt(url: String, modifier: Modifier = Modifier, circular: Boolean = false) {
@@ -130,7 +130,8 @@ fun VmHeading(text: String, modifier: Modifier = Modifier) {
 @Composable
 fun VmSongRow(song: Song, isFavorite: Boolean, onPlay: () -> Unit,
               onOpen: () -> Unit, onFavorite: () -> Unit,
-              index: Int? = null) {
+              index: Int? = null, onAddToPlaylist: (() -> Unit)? = null) {
+    var menu by remember(song.id) { mutableStateOf(false) }
     Row(Modifier.fillMaxWidth().clickable(onClick = onPlay)
             .padding(horizontal = 18.dp, vertical = 7.dp),
         verticalAlignment = Alignment.CenterVertically) {
@@ -148,8 +149,18 @@ fun VmSongRow(song: Song, isFavorite: Boolean, onPlay: () -> Unit,
             Text(song.artist, color = VmMuted, fontSize = 12.sp, maxLines = 1,
                 overflow = TextOverflow.Ellipsis)
         }
-        IconButton(onClick = onOpen, modifier = Modifier.size(38.dp)) {
-            Icon(Icons.Default.MoreHoriz, "Ver música", tint = VmMuted)
+        Box {
+            IconButton(onClick = { menu = true }, modifier = Modifier.size(38.dp)) {
+                Icon(Icons.Default.MoreHoriz, "Opções da música", tint = VmMuted)
+            }
+            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                DropdownMenuItem(text = { Text("Ver música") },
+                    onClick = { menu = false; onOpen() })
+                if (onAddToPlaylist != null) {
+                    DropdownMenuItem(text = { Text("Adicionar à playlist") },
+                        onClick = { menu = false; onAddToPlaylist() })
+                }
+            }
         }
         IconButton(onClick = onFavorite, modifier = Modifier.size(38.dp)) {
             Icon(if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
@@ -510,7 +521,8 @@ fun VmPlayerPage(song: Song, position: Long, duration: Long, playing: Boolean,
     shuffle: Boolean, onBack: () -> Unit, onPlayPause: () -> Unit,
     onPrev: () -> Unit, onNext: () -> Unit, onSeek: (Long) -> Unit,
     onLyrics: () -> Unit, onArtist: () -> Unit, onSong: () -> Unit,
-    onFavorite: () -> Unit, onShuffle: () -> Unit, onRepeat: () -> Unit) {
+    onFavorite: () -> Unit, onShuffle: () -> Unit, onRepeat: () -> Unit,
+    onAddToPlaylist: () -> Unit = {}) {
     val tone = remember(song.art) {
         listOf(Color(0xFF405E56), Color(0xFF48535E), Color(0xFF6C4A51),
             Color(0xFF53517C))[kotlin.math.abs(song.art.hashCode() % 4)]
@@ -547,6 +559,10 @@ fun VmPlayerPage(song: Song, position: Long, duration: Long, playing: Boolean,
                         Spacer(Modifier.height(4.dp))
                         Text(song.artist, color = VmWhite.copy(alpha = .75f), fontSize = 15.sp,
                             modifier = Modifier.clickable(onClick = onArtist))
+                    }
+                    IconButton(onClick = onAddToPlaylist) {
+                        Icon(Icons.Default.PlaylistAdd, "Adicionar à playlist",
+                            tint = VmAccent)
                     }
                     IconButton(onClick = onFavorite) {
                         Icon(if (favorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
