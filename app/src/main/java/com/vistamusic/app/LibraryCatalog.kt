@@ -103,7 +103,7 @@ class LibraryCatalog {
     suspend fun artistAlbums(name: String, id: Long): List<AlbumInfo> = withContext(Dispatchers.IO) {
         runCatching {
             val url = if (id > 0) "https://itunes.apple.com/lookup?id=$id&entity=album&limit=200&country=PT"
-                else "https://itunes.apple.com/search?term=${enc(name)}&entity=album&limit=80&country=PT"
+                else "https://itunes.apple.com/search?term=${enc(name)}&entity=album&limit=200&country=PT"
             val a = request(url)
             (0 until a.length()).mapNotNull { i ->
                 val j = a.optJSONObject(i) ?: return@mapNotNull null
@@ -113,7 +113,9 @@ class LibraryCatalog {
                     j.optString("artistName"),
                     j.optString("artworkUrl100").replace("100x100bb", "600x600bb"),
                     j.optString("releaseDate").take(4), j.optInt("trackCount"))
-            }.distinctBy { it.id }
+            }.filter { it.id > 0L && it.title.isNotBlank() }
+                .distinctBy { it.id }
+                .sortedWith(compareByDescending<AlbumInfo> { it.year }.thenBy { it.title })
         }.getOrDefault(emptyList())
     }
     suspend fun albumSongs(album: AlbumInfo): List<Song> = withContext(Dispatchers.IO) {
