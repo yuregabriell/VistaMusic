@@ -146,6 +146,9 @@ class PlaybackService : MediaSessionService() {
     override fun onCreate() {
         super.onCreate()
         notificationManager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+        // Cancel the legacy second card created by v0.13/v0.14 on app update.
+        // From now on only Media3 owns the one foreground playback notification.
+        notificationManager.cancel(1337)
         favoritePrefs = getSharedPreferences("vistamusic", MODE_PRIVATE)
         favoritePrefs.registerOnSharedPreferenceChangeListener(favoritesChangeListener)
         val channel = NotificationChannel(
