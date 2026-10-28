@@ -3,6 +3,9 @@ package com.vistamusic.app
 import android.app.PendingIntent
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.core.app.NotificationCompat
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -55,6 +58,11 @@ class PlaybackService : MediaSessionService() {
         const val QUEUE_JSON = "queue_json"
         const val QUEUE_INDEX = "queue_index"
         const val SONG_JSON = "vistamusic_song_json"
+        const val ACTION_PAUSE_TOGGLE = "com.vistamusic.app.NOTIFICATION_PLAY_PAUSE"
+        const val ACTION_SHADE_NEXT = "com.vistamusic.app.NOTIFICATION_NEXT"
+        const val ACTION_SHADE_PREVIOUS = "com.vistamusic.app.NOTIFICATION_PREVIOUS"
+        private const val SHADE_CHANNEL = "vistamusic_visible_controls"
+        private const val SHADE_NOTIFICATION_ID = 1337
     }
 
     private lateinit var playback: ExoPlayer
@@ -69,10 +77,76 @@ class PlaybackService : MediaSessionService() {
     private var serial = 0
     private var changing = false
     private var currentArtJob: Job? = null
+    private lateinit var notificationManager: NotificationManager
+    private var currentArtwork: Bitmap? = null
+
+    private fun activityIntent(): PendingIntent {
+        val intent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra("OPEN_CURRENT_PLAYER", true)
+        }
+        return PendingIntent.getActivity(this, 80, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+    }
+
+    private fun actionIntent(action: String, requestId: Int): PendingIntent =
+        PendingIntent.getService(this, requestId,
+            Intent(this, PlaybackService::class.java).setAction(action),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+
+    private fun updateShadeNotification() {
+        if (!::notificationManager.isInitialized || !::playback.isInitialized) return
+        val item = playback.currentMediaItem ?: return
+        if (Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) !=
+                PackageManager.PERMISSION_GRANTED) return
+
+        val playing = playback.isPlaying || playback.playWhenReady
+        val currentTitle = item.mediaMetadata.title?.toString().orEmpty()
+        val currentArtist = item.mediaMetadata.artist?.toString().orEmpty()
+        val content = NotificationCompat.Builder(this, SHADE_CHANNEL)
+            .setSmallIcon(android.R.drawable.ic_media_play)
+            .setContentTitle(currentTitle.ifBlank { "VistaMusic" })
+            .setContentText(currentArtist.ifBlank { "Reprodução musical" })
+            .setColor(Color.rgb(255, 79, 163))
+            .setColorized(false)
+            .setLargeIcon(currentArtwork)
+            .setContentIntent(activityIntent())
+            .setAutoCancel(false)
+            .setOngoing(playing)
+            .setOnlyAlertOnce(true)
+            .setSilent(true)
+            .setShowWhen(false)
+            .setCategory(NotificationCompat.CATEGORY_TRANSPORT)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .addAction(android.R.drawable.ic_media_previous, "Anterior",
+                actionIntent(ACTION_SHADE_PREVIOUS, 91))
+            .addAction(if (playing) android.R.drawable.ic_media_pause
+                       else android.R.drawable.ic_media_play,
+                if (playing) "Pausar" else "Reproduzir",
+                actionIntent(ACTION_PAUSE_TOGGLE, 92))
+            .addAction(android.R.drawable.ic_media_next, "Próxima",
+                actionIntent(ACTION_SHADE_NEXT, 93))
+            .build()
+        notificationManager.notify(SHADE_NOTIFICATION_ID, content)
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        when (intent?.action) {
+            ACTION_PAUSE_TOGGLE -> {
+                if (playback.isPlaying) playback.pause() else playback.play()
+                updateShadeNotification()
+            }
+            ACTION_SHADE_NEXT -> { playNext(false); updateShadeNotification() }
+            ACTION_SHADE_PREVIOUS -> { playPrevious(); updateShadeNotification() }
+        }
+        return super.onStartCommand(intent, flags, startId)
+    }
 
     override fun onCreate() {
         super.onCreate()
-        val notificationManager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+        notificationManager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
         val channel = NotificationChannel(
             "vistamusic_playback", "Reprodução de música",
             NotificationManager.IMPORTANCE_LOW
@@ -82,6 +156,16 @@ class PlaybackService : MediaSessionService() {
             setShowBadge(false)
         }
         notificationManager.createNotificationChannel(channel)
+        notificationManager.createNotificationChannel(
+            NotificationChannel(SHADE_CHANNEL, "Leitor nas notificações",
+                NotificationManager.IMPORTANCE_DEFAULT).apply {
+                description = "Mostra a música e botões de reprodução no painel de notificações"
+                lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
+                setSound(null, null)
+                enableVibration(false)
+                setShowBadge(false)
+            }
+        )
         setMediaNotificationProvider(
             DefaultMediaNotificationProvider.Builder(this)
                 .setChannelId("vistamusic_playback").build()
@@ -95,6 +179,9 @@ class PlaybackService : MediaSessionService() {
             )
             setHandleAudioBecomingNoisy(true)
             addListener(object : Player.Listener {
+                override fun onEvents(player: Player, events: Player.Events) {
+                    updateShadeNotification()
+                }
                 override fun onPlaybackStateChanged(state: Int) {
                     if (state == Player.STATE_ENDED && !changing) {
                         queue.getOrNull(index)?.let { taste.add(it, "complete") }
@@ -104,12 +191,7 @@ class PlaybackService : MediaSessionService() {
             })
         }
 
-        val intent = Intent(this, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
-        }
-        val pendingIntent = PendingIntent.getActivity(
-            this, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
+        val pendingIntent = activityIntent()
         val backwardButton = CommandButton.Builder(CommandButton.ICON_PREVIOUS)
             .setDisplayName("Anterior")
             .setSessionCommand(SessionCommand(PREVIOUS, Bundle.EMPTY))
@@ -273,6 +355,8 @@ class PlaybackService : MediaSessionService() {
             .build()
         // One atomic timeline change. NEVER clear the playlist first.
         playback.setMediaItem(placeholder)
+        currentArtwork = null
+        updateShadeNotification()
         // Set playWhenReady immediately so SystemUI knows this media session
         // represents an active user-requested playback during source discovery.
         playback.play()
@@ -338,11 +422,14 @@ class PlaybackService : MediaSessionService() {
             currentArtJob = launch {
                 val art = runCatching { cover.await() }.getOrNull()
                 if (ticket == serial && art != null) {
+                    val picture = BitmapFactory.decodeByteArray(art, 0, art.size)
+                    currentArtwork = picture
                     val current = playback.currentMediaItem ?: return@launch
                     playback.replaceMediaItem(
                         0, current.buildUpon()
                             .setMediaMetadata(metadata(song, art)).build()
                     )
+                    updateShadeNotification()
                 }
             }
         }
@@ -409,6 +496,9 @@ class PlaybackService : MediaSessionService() {
     override fun onDestroy() {
         serial++
         currentArtJob?.cancel()
+        if (::notificationManager.isInitialized)
+            notificationManager.cancel(SHADE_NOTIFICATION_ID)
+        currentArtwork = null
         session?.release()
         playback.release()
         playbackScope.cancel()
