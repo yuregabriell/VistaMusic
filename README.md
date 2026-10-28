@@ -1,4 +1,4 @@
-# VistaMusic v0.12.0
+# VistaMusic v0.13.0
 
 Aplicação Android experimental de música com interface premium em **Kotlin, Jetpack Compose e Media3**, sem backend próprio nem base de dados central.
 
@@ -24,13 +24,13 @@ Aplicação Android experimental de música com interface premium em **Kotlin, J
 As recomendações são heurísticas e não equivalem ao Spotify ou a modelos de IA externos. Nem todos os artistas, fotos, álbuns e faixas terão metadados completos. As faixas descobertas nas APIs de catálogo podem não ter um stream reproduzível.
 
 ## Build e Release
-O GitHub Actions `.github/workflows/android.yml` publica um APK de depuração em `v0.12.0` quando o build passa. A assinatura debug gerada em cada build **não é estável**: instalar versões subsequentes pode exigir desinstalar a anterior e perder preferências locais.
+O GitHub Actions `.github/workflows/android.yml` publica um APK de depuração em `v0.13.0` quando o build passa. A assinatura debug gerada em cada build **não é estável**: instalar versões subsequentes pode exigir desinstalar a anterior e perder preferências locais.
 
 ## Licença
 GPL-3.0, com dependência GPL-3.0 do NewPipeExtractor. Uso de terceiros sujeito aos respetivos termos e atribuições. Projeto não afiliado a Spotify, Google/YouTube, Apple, Audius ou TheAudioDB.
 
 
-## Novidades v0.12.0
+## Novidades v0.13.0
 
 - YouTube Trending Music, via módulo **YoutubeTrendingMusicExtractor** do NewPipeExtractor, por região PT/US. A secção distingue os YouTube Charts do ranking Apple Music usado como alternativa quando a extração falha. Não é a Home personalizada da conta YouTube Music.
 - Perfil de artista com **até 10 faixas**, unindo pesquisa de vídeos do YouTube ordenada por visualizações da amostra, ranking TheAudioDB e discografia iTunes. Não afirmar que as faixas representam o ranking oficial completo da carreira de cada artista.
@@ -40,7 +40,7 @@ GPL-3.0, com dependência GPL-3.0 do NewPipeExtractor. Uso de terceiros sujeito 
 
 A experiência ainda não usa autenticação do YouTube Music, portanto não consegue importar o feed pessoal ou as recomendações privadas da conta. Os rankings musicais da plataforma e as sugestões pessoais do VistaMusic são conceitos distintos.
 
-## Revisão v0.12.0
+## Revisão v0.13.0
 - Home: um único **Em alta agora · YouTube Charts EUA**, sem duplicação de Portugal; se o chart não estiver disponível, não se fazem afirmações falsas sobre rankings.
 - O destaque da Home escolhe um tema a partir de sinais **locais** (histórico, favoritos e artistas/géneros relacionados); muda a seleção após reproduções, e usa uma alternativa não personalizada quando ainda não há histórico.
 - Mais sons para descobrir: somente faixas obtidas do **YouTube Charts dos EUA**, não da fonte independente Audius. Não é uma lista oficial de lançamentos recentes.
@@ -52,7 +52,7 @@ A experiência ainda não usa autenticação do YouTube Music, portanto não con
 
 Os dados, links e fluxos de vídeo associados a integrações não oficiais podem mudar a qualquer momento. A compilação bem-sucedida não garante que todas as chamadas externas ou todos os audios funcionem num dispositivo real.
 
-## Revisão v0.12.0 — capas musicais
+## Revisão v0.13.0 — capas musicais
 - Miniaturas de vídeos do YouTube deixam de ser usadas como arte de músicas, seja na Home, nas listas, no player ou em favoritos antigos.
 - Para cada música proveniente do YouTube, o VistaMusic normaliza o nome do artista (por exemplo, sufixos VEVO/Official/Topic) e o título, e procura a capa quadrada do álbum no catálogo Deezer.
 - Resultados só são aceites se título e artista corresponderem. O carregamento não exibe a miniatura do vídeo em momento algum.
@@ -61,7 +61,7 @@ Os dados, links e fluxos de vídeo associados a integrações não oficiais pode
 
 O catálogo Deezer é externo e pode impor limites de disponibilidade e utilização da arte. Estas imagens são propriedade dos seus titulares; antes de distribuir o app publicamente ou comercialmente é necessário verificar as permissões e condições aplicáveis.
 
-## v0.12.0 — notificações e ecrã de bloqueio
+## v0.13.0 — notificações e ecrã de bloqueio
 
 - ExoPlayer é agora mantido por `PlaybackService : MediaSessionService`, separado da Activity e gerido pelo Android.
 - Integração Media3 MediaSession + MediaController com notificação automática no Android e controlos em ecrã bloqueado, notificação e painel de multimédia.
@@ -75,7 +75,7 @@ O catálogo Deezer é externo e pode impor limites de disponibilidade e utiliza�
 A implantação usa os controlos nativos do Android em vez de replicar a interface e a marca comercial do Spotify. Não há reprodução de conteúdos com DRM contornado; fontes experimentais podem parar de funcionar.
 
 
-## v0.12.0 — notificações e música primeiro
+## v0.13.0 — notificações e música primeiro
 - Canal de notificações multimédia do Android para reprodução de música; permissão de notificações solicitada no Android 13+.
 - MediaSessionService publica metadados e preferências de botões no painel multimédia e ecrã de bloqueio, sujeito a restrições do fabricante e definições do utilizador.
 - Integração experimental e não autenticada com a pesquisa **Songs** do YouTube Music; procura faixas musicais em vez de videoclipes como primeira opção.
@@ -84,7 +84,7 @@ A implantação usa os controlos nativos do Android em vez de replicar a interfa
 - Fallback para a extração anterior de áudio quando a pesquisa musical não funciona. Não é uma API oficial e não garante acesso a todo o catálogo ou reprodução sem anúncios.
 - DRM e direitos autorais não são contornados. A disponibilidade das fontes depende dos serviços terceiros.
 
-## v0.12.0 — capas de qualidade
+## v0.13.0 — capas de qualidade
 - Capas do YouTube Music passam a requisitar uma resolução maior junto da origem, em vez de ampliar miniaturas de 120x120 píxeis para o player em ecrã inteiro.
 - Pesquisa por título e artista normaliza participações (ft., feat., featuring), evitando perder a capa em faixas como "Baby ft. Ludacris".
 - A procura por capa funciona em todas as listas, artistas, mini-player e player expandido.
@@ -95,7 +95,7 @@ A implantação usa os controlos nativos do Android em vez de replicar a interfa
 - A disponibilidade e qualidade real das imagens dependem dos serviços externos e respetivas condições.
 
 
-## v0.12.0 — cartão de reprodução nas notificações do Android
+## v0.13.0 — cartão de reprodução nas notificações do Android
 
 - Corrigida a causa de desaparecimento do cartão multimédia: o serviço não chama `stop()+clearMediaItems()` durante a resolução da música. Em vez disso, a `MediaSession` mantém um item com capa, título e artista na timeline desde o toque em Reproduzir.
 - Antes de chegar o URL do áudio, o player anuncia estado de reprodução pendente (sem iniciar requests a um endereço provisório). Quando o áudio fica disponível, o serviço substitui o item sem esvaziar a playlist e preserva as ações de pausa/retoma escolhidas no Android.
@@ -104,3 +104,16 @@ A implantação usa os controlos nativos do Android em vez de replicar a interfa
 - O cartão deve ser avaliado enquanto o áudio está a tocar, após a faixa realmente iniciar. Se as notificações ou controlos de multimédia tiverem sido desativados nas definições do telefone, o sistema pode ocultá-lo.
 
 **Limitação:** a compilação só valida compatibilidade do código; o aparecimento do cartão e continuidade do áudio dependem de uma prova num dispositivo real. Esta versão não altera a localização do painel definida pelo fabricante.
+
+## v0.13.0 — playlists, rosa neon e notificações
+
+- Tema geral rosa neon `#FF4FA3`, substituindo o antigo verde nos botões, destaques e player; cartões de género preservam cores próprias.
+- Playlists privadas guardadas no armazenamento local do Android: criar, renomear, descrever, eliminar, reproduzir, reprodução aleatória, adicionar músicas pelo menu de opções, remover e mover a ordem das faixas para cima/baixo.
+- Na Biblioteca, secção "As tuas playlists", com página de cada playlist, capa criada a partir da primeira música, botões de reprodução e menu de edição.
+- Ao abrir uma playlist e tocar em Adicionar músicas, a pesquisa permite escolher e voltar à lista pelo botão "Concluir". Sem servidor, sincronização entre dispositivos, playlists partilhadas ou colaboração nesta versão.
+- Notificação adicional de reprodução no canal "Leitor nas notificações": título, artista, capa, botões anterior/pausa/seguinte. Mantém em paralelo o cartão nativo do Media3 no ecrã de bloqueio e painel rápido, para funcionamento mais amplo em aparelhos ColorOS.
+- Os controlos da notificação enviam comandos diretamente a `PlaybackService`. Ao tocar no cartão no painel ou no ecrã de bloqueio, `MainActivity` recebe `OPEN_CURRENT_PLAYER` e abre a música atual assim que o `MediaController` se liga.
+- O Android e o fabricante controlam que painéis mostram cada tipo de controlo. O canal de notificação requer permissão do utilizador em Android 13+. Não é possível obrigar o ColorOS a posicionar o cartão exatamente como outra aplicação.
+- Esta é uma APK de teste com assinatura debug efémera; evitar desinstalar a anterior antes de guardar os dados locais.
+
+A build Android bem-sucedida verifica código e empacotamento, mas o comportamento visual final da notificação tem de ser confirmado num dispositivo real.
