@@ -3,6 +3,7 @@ package com.vistamusic.app
 import android.app.PendingIntent
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.app.NotificationCompat
@@ -29,6 +30,7 @@ import androidx.media3.session.CommandButton
 import androidx.media3.session.DefaultMediaNotificationProvider
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
+import androidx.media3.session.MediaStyleNotificationHelper
 import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionResult
 import com.google.common.util.concurrent.Futures
@@ -55,6 +57,8 @@ class PlaybackService : MediaSessionService() {
         const val PLAY_QUEUE = "com.vistamusic.app.PLAY_QUEUE"
         const val NEXT = "com.vistamusic.app.NEXT"
         const val PREVIOUS = "com.vistamusic.app.PREVIOUS"
+        const val TOGGLE_FAVORITE = "com.vistamusic.app.TOGGLE_FAVORITE"
+        const val ACTION_SHADE_LIKE = "com.vistamusic.app.NOTIFICATION_LIKE"
         const val QUEUE_JSON = "queue_json"
         const val QUEUE_INDEX = "queue_index"
         const val SONG_JSON = "vistamusic_song_json"
@@ -79,6 +83,69 @@ class PlaybackService : MediaSessionService() {
     private var currentArtJob: Job? = null
     private lateinit var notificationManager: NotificationManager
     private var currentArtwork: Bitmap? = null
+    private lateinit var backwardButton: CommandButton
+    private lateinit var forwardButton: CommandButton
+    private lateinit var favoritePrefs: SharedPreferences
+    private val favoritesChangeListener =
+        SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == "favorites" && ::playback.isInitialized) {
+                refreshMediaButtons()
+                updateShadeNotification()
+            }
+        }
+
+    private fun activeSong(): Song? {
+        val json = playback.currentMediaItem?.mediaMetadata?.extras
+            ?.getString(SONG_JSON).orEmpty()
+        return runCatching { Song.fromJson(org.json.JSONObject(json)) }
+            .getOrNull() ?: queue.getOrNull(index)
+    }
+
+    private fun storedFavorites(): List<Song> {
+        val raw = favoritePrefs.getString("favorites", "[]").orEmpty()
+        val array = runCatching { JSONArray(raw) }.getOrDefault(JSONArray())
+        return (0 until array.length()).mapNotNull { i ->
+            array.optJSONObject(i)?.let { obj ->
+                runCatching { Song.fromJson(obj) }.getOrNull()
+            }
+        }
+    }
+
+    private fun isLiked(song: Song): Boolean =
+        storedFavorites().any { it.id == song.id }
+
+    private fun toggleFavorite() {
+        val song = activeSong() ?: return
+        val liked = storedFavorites()
+        val changed = if (liked.any { it.id == song.id })
+            liked.filterNot { it.id == song.id }
+        else listOf(song) + liked
+        val array = JSONArray()
+        changed.forEach { array.put(it.toJson()) }
+        favoritePrefs.edit().putString("favorites", array.toString()).apply()
+        refreshMediaButtons()
+        updateShadeNotification()
+    }
+
+    private fun heartButton(): CommandButton {
+        val liked = if (::favoritePrefs.isInitialized)
+            activeSong()?.let(::isLiked) == true else false
+        return CommandButton.Builder(
+            if (liked) CommandButton.ICON_HEART_FILLED
+            else CommandButton.ICON_HEART_UNFILLED
+        )
+            .setDisplayName(if (liked) "Remover dos favoritos" else "Curtir música")
+            .setSessionCommand(SessionCommand(TOGGLE_FAVORITE, Bundle.EMPTY))
+            .build()
+    }
+
+    private fun refreshMediaButtons() {
+        val currentSession = session ?: return
+        if (!::backwardButton.isInitialized || !::forwardButton.isInitialized) return
+        val buttons = listOf(backwardButton, forwardButton, heartButton())
+        currentSession.setMediaButtonPreferences(buttons)
+        currentSession.setCustomLayout(buttons)
+    }
 
     private fun activityIntent(): PendingIntent {
         val intent = Intent(this, MainActivity::class.java).apply {
@@ -104,7 +171,11 @@ class PlaybackService : MediaSessionService() {
         val playing = playback.isPlaying || playback.playWhenReady
         val currentTitle = item.mediaMetadata.title?.toString().orEmpty()
         val currentArtist = item.mediaMetadata.artist?.toString().orEmpty()
+        val currentSession = session ?: return
+        val liked = activeSong()?.let(::isLiked) == true
         val content = NotificationCompat.Builder(this, SHADE_CHANNEL)
+            .setStyle(MediaStyleNotificationHelper.MediaStyle(currentSession)
+                .setShowActionsInCompactView(0, 1, 2))
             .setSmallIcon(android.R.drawable.ic_media_play)
             .setContentTitle(currentTitle.ifBlank { "VistaMusic" })
             .setContentText(currentArtist.ifBlank { "Reprodução musical" })
@@ -128,6 +199,12 @@ class PlaybackService : MediaSessionService() {
                 actionIntent(ACTION_PAUSE_TOGGLE, 92))
             .addAction(android.R.drawable.ic_media_next, "Próxima",
                 actionIntent(ACTION_SHADE_NEXT, 93))
+            .addAction(
+                if (liked) R.drawable.ic_notification_heart_filled
+                else R.drawable.ic_notification_heart,
+                if (liked) "Remover favorito" else "Curtir",
+                actionIntent(ACTION_SHADE_LIKE, 94)
+            )
             .build()
         notificationManager.notify(SHADE_NOTIFICATION_ID, content)
     }
@@ -140,6 +217,7 @@ class PlaybackService : MediaSessionService() {
             }
             ACTION_SHADE_NEXT -> { playNext(false); updateShadeNotification() }
             ACTION_SHADE_PREVIOUS -> { playPrevious(); updateShadeNotification() }
+            ACTION_SHADE_LIKE -> toggleFavorite()
         }
         return super.onStartCommand(intent, flags, startId)
     }
@@ -147,6 +225,8 @@ class PlaybackService : MediaSessionService() {
     override fun onCreate() {
         super.onCreate()
         notificationManager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+        favoritePrefs = getSharedPreferences("vistamusic", MODE_PRIVATE)
+        favoritePrefs.registerOnSharedPreferenceChangeListener(favoritesChangeListener)
         val channel = NotificationChannel(
             "vistamusic_playback", "Reprodução de música",
             NotificationManager.IMPORTANCE_LOW
@@ -192,11 +272,11 @@ class PlaybackService : MediaSessionService() {
         }
 
         val pendingIntent = activityIntent()
-        val backwardButton = CommandButton.Builder(CommandButton.ICON_PREVIOUS)
+        backwardButton = CommandButton.Builder(CommandButton.ICON_PREVIOUS)
             .setDisplayName("Anterior")
             .setSessionCommand(SessionCommand(PREVIOUS, Bundle.EMPTY))
             .build()
-        val forwardButton = CommandButton.Builder(CommandButton.ICON_NEXT)
+        forwardButton = CommandButton.Builder(CommandButton.ICON_NEXT)
             .setDisplayName("Próxima")
             .setSessionCommand(SessionCommand(NEXT, Bundle.EMPTY))
             .build()
@@ -213,6 +293,7 @@ class PlaybackService : MediaSessionService() {
                             .add(SessionCommand(PLAY_QUEUE, Bundle.EMPTY))
                             .add(SessionCommand(NEXT, Bundle.EMPTY))
                             .add(SessionCommand(PREVIOUS, Bundle.EMPTY))
+                            .add(SessionCommand(TOGGLE_FAVORITE, Bundle.EMPTY))
                             .build()
                     return MediaSession.ConnectionResult.AcceptedResultBuilder(mediaSession)
                         .setAvailableSessionCommands(commands)
@@ -269,13 +350,15 @@ class PlaybackService : MediaSessionService() {
                         }
                         NEXT -> playNext(fromCompletion = false)
                         PREVIOUS -> playPrevious()
+                        TOGGLE_FAVORITE -> toggleFavorite()
                     }
                     return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
                 }
             })
-            .setCustomLayout(listOf(backwardButton, forwardButton))
-            .setMediaButtonPreferences(listOf(backwardButton, forwardButton))
+            .setCustomLayout(listOf(backwardButton, forwardButton, heartButton()))
+            .setMediaButtonPreferences(listOf(backwardButton, forwardButton, heartButton()))
             .build()
+        refreshMediaButtons()
     }
 
     private fun fallbackArt(song: Song): ByteArray {
@@ -355,6 +438,7 @@ class PlaybackService : MediaSessionService() {
             .build()
         // One atomic timeline change. NEVER clear the playlist first.
         playback.setMediaItem(placeholder)
+        refreshMediaButtons()
         currentArtwork = null
         updateShadeNotification()
         // Set playWhenReady immediately so SystemUI knows this media session
@@ -415,6 +499,7 @@ class PlaybackService : MediaSessionService() {
             val resume = playback.playWhenReady
             changing = true
             playback.replaceMediaItem(0, ready)
+            refreshMediaButtons()
             playback.prepare()
             playback.playWhenReady = resume
             changing = false
@@ -496,6 +581,8 @@ class PlaybackService : MediaSessionService() {
     override fun onDestroy() {
         serial++
         currentArtJob?.cancel()
+        if (::favoritePrefs.isInitialized)
+            favoritePrefs.unregisterOnSharedPreferenceChangeListener(favoritesChangeListener)
         if (::notificationManager.isInitialized)
             notificationManager.cancel(SHADE_NOTIFICATION_ID)
         currentArtwork = null
