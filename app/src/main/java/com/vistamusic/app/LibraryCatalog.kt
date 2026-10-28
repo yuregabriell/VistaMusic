@@ -84,7 +84,7 @@ class LibraryCatalog {
     suspend fun artistSongs(name: String, id: Long): List<Song> = withContext(Dispatchers.IO) {
         runCatching {
             val query = if (id > 0) "https://itunes.apple.com/lookup?id=$id&entity=song&limit=200&country=PT"
-                else "https://itunes.apple.com/search?term=${enc(name)}&entity=song&limit=75&country=PT"
+                else "https://itunes.apple.com/search?term=${enc(name)}&entity=song&limit=200&country=PT"
             val a = request(query)
             (0 until a.length()).mapNotNull { idx ->
                 val j = a.optJSONObject(idx) ?: return@mapNotNull null
