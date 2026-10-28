@@ -252,69 +252,96 @@ class PlaybackService : MediaSessionService() {
         }.getOrElse { fallbackArt(song) }
     }
 
+    /**
+     * Keep a MediaItem in ExoPlayer's timeline throughout asynchronous source
+     * lookup. Previously stop()+clearMediaItems() removed the media session's
+     * only item; Android consequently dismissed the SystemUI media card.
+     *
+     * The placeholder URI is deliberately never prepared or opened.
+     */
     private fun loadCurrent() {
         val requested = queue.getOrNull(index) ?: return
         serial += 1
         val ticket = serial
-        changing = true
         currentArtJob?.cancel()
-        playback.stop()
-        playback.clearMediaItems()
+        changing = true
+
+        val placeholder = MediaItem.Builder()
+            .setMediaId(requested.id)
+            .setUri(Uri.parse("https://127.0.0.1/vistamusic-waiting"))
+            .setMediaMetadata(metadata(requested, fallbackArt(requested)))
+            .build()
+        // One atomic timeline change. NEVER clear the playlist first.
+        playback.setMediaItem(placeholder)
+        // Set playWhenReady immediately so SystemUI knows this media session
+        // represents an active user-requested playback during source discovery.
+        playback.play()
         changing = false
 
         playbackScope.launch {
-            // Music-first matching for all old saved songs and catalog-based tracks.
             val song = when {
                 requested.audio.startsWith("youtube:") ->
                     runCatching { NativeMusic.musicVersion(requested) }.getOrDefault(requested)
                 requested.audio.startsWith("discover:") -> {
-                    val original = runCatching {
+                    val tracks = runCatching {
                         NativeMusic.search(requested.audio.removePrefix("discover:"))
                     }.getOrDefault(emptyList())
-                    val candidate = original.firstOrNull()
-                    if (candidate != null) {
-                        candidate.copy(
-                            title = if (requested.title.isNotBlank()) requested.title else candidate.title,
-                            artist = if (requested.artist.isNotBlank()) requested.artist else candidate.artist
-                        )
-                    } else requested
+                    val candidate = tracks.firstOrNull()
+                    if (candidate != null) candidate.copy(
+                        title = requested.title.ifBlank { candidate.title },
+                        artist = requested.artist.ifBlank { candidate.artist }
+                    ) else requested
                 }
                 else -> requested
             }
             if (ticket != serial) return@launch
+
             val cover = async { artworkBytes(song) }
             val source = runCatching {
                 when {
                     song.audio.startsWith("youtube:") ->
                         NativeMusic.resolve(song.audio.removePrefix("youtube:"))
                     song.audio.startsWith("discover:") -> {
-                        val results = NativeMusic.search(song.audio.removePrefix("discover:"))
-                        val id = results.firstOrNull()?.audio?.removePrefix("youtube:")
+                        val matches = NativeMusic.search(song.audio.removePrefix("discover:"))
+                        val id = matches.firstOrNull()?.audio?.removePrefix("youtube:")
                             ?: error("Song not found")
                         NativeMusic.resolve(id)
                     }
                     else -> song.audio
                 }
             }.getOrNull()
+
             if (ticket != serial || source.isNullOrBlank()) {
                 cover.cancel()
+                if (ticket == serial) {
+                    // Preserve the track details; don't pretend audio is playing.
+                    playback.pause()
+                    android.util.Log.w("VistaMusicMedia",
+                        "Could not resolve the audio stream for " + requested.title)
+                }
                 return@launch
             }
-            val item = MediaItem.Builder()
+
+            val ready = MediaItem.Builder()
                 .setMediaId(song.id)
                 .setUri(source)
                 .setMediaMetadata(metadata(song, fallbackArt(song)))
                 .build()
-            playback.setMediaItem(item)
+            // Preserve play/pause state selected in the notification while loading.
+            val resume = playback.playWhenReady
+            changing = true
+            playback.replaceMediaItem(0, ready)
             playback.prepare()
-            playback.play()
+            playback.playWhenReady = resume
+            changing = false
             taste.add(song, "play")
             currentArtJob = launch {
                 val art = runCatching { cover.await() }.getOrNull()
                 if (ticket == serial && art != null) {
-                    val old = playback.currentMediaItem ?: return@launch
+                    val current = playback.currentMediaItem ?: return@launch
                     playback.replaceMediaItem(
-                        0, old.buildUpon().setMediaMetadata(metadata(song, art)).build()
+                        0, current.buildUpon()
+                            .setMediaMetadata(metadata(song, art)).build()
                     )
                 }
             }
@@ -365,6 +392,16 @@ class PlaybackService : MediaSessionService() {
             index++
             loadCurrent()
         }
+    }
+
+    override fun onUpdateNotification(
+        session: MediaSession, startInForegroundRequired: Boolean
+    ) {
+        super.onUpdateNotification(session, startInForegroundRequired)
+        android.util.Log.d("VistaMusicMedia",
+            "System media notification updated; foreground=" + startInForegroundRequired +
+                " items=" + playback.mediaItemCount +
+                " state=" + playback.playbackState)
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = session
