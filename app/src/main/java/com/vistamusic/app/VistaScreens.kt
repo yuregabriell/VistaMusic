@@ -91,10 +91,10 @@ fun VmSongArt(song: Song, modifier: Modifier = Modifier) {
 @Composable
 private fun VmNeutralArtwork(song: Song, modifier: Modifier = Modifier) {
     val shades = listOf(
-        listOf(Color(0xFF386B68), Color(0xFF1C2E40)),
+        listOf(Color(0xFF8D3E68), Color(0xFF34233D)),
         listOf(Color(0xFF574A77), Color(0xFF242C42)),
         listOf(Color(0xFF87565A), Color(0xFF44324A)),
-        listOf(Color(0xFF566642), Color(0xFF233C45))
+        listOf(Color(0xFF78405E), Color(0xFF36233E))
     )
     val colors = shades[(kotlin.math.abs(song.id.hashCode().toLong()) %
         shades.size).toInt()]
@@ -214,7 +214,7 @@ fun VmArtistPage(
                 val portrait = bio?.photo.orEmpty()
                 val header = bio?.banner?.takeIf { it.isNotBlank() } ?: portrait
                 Box(Modifier.fillMaxWidth().height(280.dp).background(
-                    Brush.verticalGradient(listOf(Color(0xFF34534A), VmBackground)))) {
+                    Brush.verticalGradient(listOf(Color(0xFF6B2E54), VmBackground)))) {
                     if (header.isNotBlank()) {
                         AsyncImage(model = header, contentDescription = name,
                             contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
@@ -346,7 +346,7 @@ fun VmAlbumPage(album: AlbumInfo, songs: List<Song>, loading: Boolean,
         LazyColumn(contentPadding = PaddingValues(bottom = 26.dp)) {
             item {
                 Column(Modifier.fillMaxWidth().background(Brush.verticalGradient(
-                    listOf(Color(0xFF334A41), VmBackground))).padding(bottom = 20.dp),
+                    listOf(Color(0xFF593049), VmBackground))).padding(bottom = 20.dp),
                     horizontalAlignment = Alignment.CenterHorizontally) {
                     Spacer(Modifier.height(18.dp))
                     VmArt(album.art, Modifier.size(230.dp))
@@ -533,8 +533,8 @@ fun VmPlayerPage(song: Song, position: Long, duration: Long, playing: Boolean,
     onFavorite: () -> Unit, onShuffle: () -> Unit, onRepeat: () -> Unit,
     onAddToPlaylist: () -> Unit = {}) {
     val tone = remember(song.art) {
-        listOf(Color(0xFF405E56), Color(0xFF48535E), Color(0xFF6C4A51),
-            Color(0xFF53517C))[kotlin.math.abs(song.art.hashCode() % 4)]
+        listOf(Color(0xFF653048), Color(0xFF773A66), Color(0xFF6C354D),
+            Color(0xFF53315A))[kotlin.math.abs(song.art.hashCode() % 4)]
     }
     Column(Modifier.fillMaxSize().background(
         Brush.verticalGradient(listOf(tone, VmBackground, VmBackground)))) {
