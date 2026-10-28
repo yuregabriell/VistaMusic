@@ -77,8 +77,23 @@ private fun VistaMusicApp() {
         }
     }
     val player = mediaController
+    var pendingCommand by remember { mutableStateOf<Pair<String, Bundle>?>(null) }
     fun sendPlaybackCommand(action: String, args: Bundle = Bundle.EMPTY) {
-        player?.sendCustomCommand(SessionCommand(action, Bundle.EMPTY), args)
+        val connected = player
+        if (connected != null) {
+            connected.sendCustomCommand(SessionCommand(action, Bundle.EMPTY), args)
+        } else if (action == PlaybackService.PLAY_QUEUE) {
+            pendingCommand = action to Bundle(args)
+        }
+    }
+    LaunchedEffect(player, pendingCommand) {
+        val connected = player
+        val pending = pendingCommand
+        if (connected != null && pending != null) {
+            connected.sendCustomCommand(
+                SessionCommand(pending.first, Bundle.EMPTY), pending.second)
+            pendingCommand = null
+        }
     }
 
     var tab by remember { mutableIntStateOf(0) }
