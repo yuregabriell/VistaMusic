@@ -104,13 +104,20 @@ object AlbumArtwork {
         val artist = cleanArtist(song.artist)
         val title = cleanTitle(song)
         if (artist.isBlank() || title.isBlank()) return ""
+        if (song.source.contains("YouTube Music") && song.art.startsWith("https://"))
+            return song.art
         val key = compact(artist) + "|" + compact(title)
         cache[key]?.let { return it }
         return limiter.withPermit {
             cache[key]?.let { return@withPermit it }
             val image = withContext(Dispatchers.IO) {
                 var resolved = ""
-                for (query in listOf("$artist $title", title)) {
+                val musicTrack = runCatching { NativeMusic.musicVersion(song) }.getOrNull()
+                if (musicTrack != null && musicTrack.source.contains("YouTube Music") &&
+                    musicTrack.art.startsWith("https://")) {
+                    resolved = musicTrack.art
+                }
+                if (resolved.isBlank()) for (query in listOf("$artist $title", title)) {
                     resolved = runCatching {
                         searchDeezer(query, artist, title)
                     }.getOrDefault("")
