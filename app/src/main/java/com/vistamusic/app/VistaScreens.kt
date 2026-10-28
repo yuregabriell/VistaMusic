@@ -43,6 +43,15 @@ fun VmArt(url: String, modifier: Modifier = Modifier, circular: Boolean = false)
 }
 
 @Composable
+fun VmSongArt(song: Song, modifier: Modifier = Modifier) {
+    val artwork by produceState(initialValue = song.art,
+        key1 = song.id, key2 = song.title, key3 = song.artist) {
+        value = AlbumArtwork.resolve(song)
+    }
+    VmArt(artwork, modifier)
+}
+
+@Composable
 fun VmHeading(text: String, modifier: Modifier = Modifier) {
     Text(text, color = VmWhite, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold,
         modifier = modifier)
@@ -59,7 +68,7 @@ fun VmSongRow(song: Song, isFavorite: Boolean, onPlay: () -> Unit,
             Text("$index", color = VmMuted, fontSize = 14.sp,
                 modifier = Modifier.width(24.dp), textAlign = TextAlign.Center)
         }
-        VmArt(song.art, Modifier.size(54.dp).clickable(onClick = onOpen))
+        VmSongArt(song, Modifier.size(54.dp).clickable(onClick = onOpen))
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(LyricsApi.cleanTitle(song.title, song.artist),
@@ -304,7 +313,7 @@ fun VmTrackPage(song: Song, info: SongInfo?, lyrics: LyricSheet?,
             item {
                 Box(Modifier.fillMaxWidth().height(292.dp).background(Brush.verticalGradient(
                     listOf(Color(0xFF36564B), VmBackground))), contentAlignment = Alignment.Center) {
-                    VmArt(song.art, Modifier.size(236.dp))
+                    VmSongArt(song, Modifier.size(236.dp))
                 }
                 Column(Modifier.padding(horizontal = 22.dp)) {
                     Text(LyricsApi.cleanTitle(song.title, song.artist),
@@ -385,7 +394,7 @@ fun VmMiniPlayer(song: Song, playing: Boolean, loading: Boolean,
         .clip(RoundedCornerShape(18.dp)).background(VmCard)) {
         Row(Modifier.fillMaxWidth().clickable(onClick = onOpen).padding(8.dp),
             verticalAlignment = Alignment.CenterVertically) {
-            VmArt(song.art, Modifier.size(44.dp))
+            VmSongArt(song, Modifier.size(44.dp))
             Spacer(Modifier.width(9.dp))
             Column(Modifier.weight(1f)) {
                 Text(LyricsApi.cleanTitle(song.title, song.artist), color = VmWhite,
@@ -457,7 +466,7 @@ fun VmPlayerPage(song: Song, position: Long, duration: Long, playing: Boolean,
             horizontalAlignment = Alignment.CenterHorizontally) {
             item {
                 Spacer(Modifier.height(14.dp))
-                VmArt(song.art, Modifier.fillMaxWidth().widthIn(max = 335.dp)
+                VmSongArt(song, Modifier.fillMaxWidth().widthIn(max = 335.dp)
                     .aspectRatio(1f))
                 Spacer(Modifier.height(30.dp))
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -592,7 +601,7 @@ fun VmLyricsPage(song: Song, sheet: LyricSheet?, position: Long,
         }
         Row(Modifier.fillMaxWidth().padding(horizontal = 25.dp, vertical = 19.dp),
             verticalAlignment = Alignment.CenterVertically) {
-            VmArt(song.art, Modifier.size(48.dp))
+            VmSongArt(song, Modifier.size(48.dp))
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(LyricsApi.cleanTitle(song.title, song.artist), color = VmWhite,
