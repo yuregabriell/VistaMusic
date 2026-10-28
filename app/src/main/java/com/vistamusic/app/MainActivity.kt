@@ -196,6 +196,27 @@ private fun VistaMusicApp(
             }
         }
     }
+    DisposableEffect(prefs) {
+        // A notification/lock-screen heart modifies the same preferences file.
+        // Observe those changes so the Library and expanded player update live.
+        val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == "favorites") {
+                val raw = prefs.getString("favorites", "[]").orEmpty()
+                val arr = runCatching { JSONArray(raw) }.getOrDefault(JSONArray())
+                val loaded = (0 until arr.length()).mapNotNull { i ->
+                    arr.optJSONObject(i)?.let { j ->
+                        runCatching { Song.fromJson(j) }.getOrNull()
+                    }
+                }
+                if (favorites.map { it.id } != loaded.map { it.id }) {
+                    favorites.clear()
+                    favorites.addAll(loaded)
+                }
+            }
+        }
+        prefs.registerOnSharedPreferenceChangeListener(listener)
+        onDispose { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
+    }
     val followed = remember {
         mutableStateListOf<String>().apply {
             val a = runCatching { JSONArray(prefs.getString("followed", "[]")) }
@@ -218,7 +239,14 @@ private fun VistaMusicApp(
     }
     fun askAddToPlaylist(song: Song) {
         val target = playlistAddTarget
-        if (target != null && playlists.any { it.id == target }) {
+        if (target == "liked") {
+            if (favorites.none { it.id == song.id }) {
+                favorites.add(0, song)
+                val updated = JSONArray()
+                favorites.forEach { updated.put(it.toJson()) }
+                prefs.edit().putString("favorites", updated.toString()).apply()
+            }
+        } else if (target != null && playlists.any { it.id == target }) {
             addSong(target, song)
         } else addingSong = song
     }
@@ -524,6 +552,40 @@ private fun VistaMusicApp(
                         repeat = !repeat
                         player?.repeatMode = if (repeat) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
                     }, onAddToPlaylist = { askAddToPlaylist(nowPlaying!!) })
+                selectedPlaylistId == "liked" -> {
+                    val liked = favorites.toList()
+                    VmPlaylistPage(
+                        playlist = VmPlaylist("liked", "Músicas curtidas",
+                            "Todas as músicas que guardaste com o coração.", liked),
+                        onBack = { selectedPlaylistId = null },
+                        onPlay = { at ->
+                            playSongs(liked, at)
+                            playerOpen = true
+                        },
+                        onShuffle = {
+                            val shuffled = liked.shuffled()
+                            if (shuffled.isNotEmpty()) {
+                                playSongs(shuffled, 0)
+                                playerOpen = true
+                            }
+                        },
+                        onRename = {},
+                        onDelete = {},
+                        onRemove = { song ->
+                            if (isFavorite(song)) toggleFavorite(song)
+                        },
+                        onMove = { _, _ -> },
+                        onAddSongs = {
+                            selectedPlaylistId = null
+                            playlistAddTarget = "liked"
+                            tab = 1
+                        },
+                        onOpenSong = { openSong(it) },
+                        isFavorite = ::isFavorite,
+                        onFavorite = ::toggleFavorite,
+                        isSystemList = true
+                    )
+                }
                 selectedPlaylistId != null &&
                     playlists.any { it.id == selectedPlaylistId } -> {
                     val active = playlists.first { it.id == selectedPlaylistId }
@@ -762,19 +824,19 @@ private fun VistaMusicApp(
                         1 -> Column {
                             playlistAddTarget?.let { target ->
                                 val playlist = playlists.firstOrNull { it.id == target }
-                                if (playlist != null) {
+                                if (playlist != null || target == "liked") {
                                     Row(Modifier.fillMaxWidth().padding(
                                         start = 20.dp, end = 12.dp, bottom = 10.dp),
                                         verticalAlignment = Alignment.CenterVertically) {
                                         Column(Modifier.weight(1f)) {
-                                            Text("A adicionar a: ${playlist.name}",
+                                            Text("A adicionar a: ${playlist?.name ?: "Músicas curtidas"}",
                                                 color = VmAccent, fontWeight = FontWeight.Bold,
                                                 fontSize = 14.sp)
                                             Text("Pesquisa uma música e usa o menu de opções para a adicionar.",
                                                 color = VmMuted, fontSize = 11.sp)
                                         }
                                         TextButton(onClick = {
-                                            selectedPlaylistId = playlist.id
+                                            selectedPlaylistId = playlist?.id ?: "liked"
                                             playlistAddTarget = null
                                             tab = 2
                                         }) { Text("Concluir") }
@@ -862,7 +924,9 @@ private fun VistaMusicApp(
                                     modifier = Modifier.padding(horizontal = 20.dp, vertical = 18.dp))
                                 VmPlaylistLibrary(playlists,
                                     onCreate = { songForNewPlaylist = null; showCreatePlaylist = true },
-                                    onOpen = { selectedPlaylistId = it.id })
+                                    onOpen = { selectedPlaylistId = it.id },
+                                    likedSongs = favorites.toList(),
+                                    onOpenLiked = { selectedPlaylistId = "liked" })
                                 Spacer(Modifier.height(14.dp))
                                 if (followed.isNotEmpty()) {
                                     VmHeading("Artistas seguidos", Modifier.padding(20.dp))
@@ -871,25 +935,13 @@ private fun VistaMusicApp(
                                             .clickable { openArtist(name) }.padding(18.dp))
                                     }
                                 }
-                                VmHeading("Músicas favoritas", Modifier.padding(horizontal = 20.dp,
-                                    vertical = 14.dp))
-                            }
-                            if (favorites.isEmpty()) item {
-                                Text("Adiciona músicas ao coração para as encontrares aqui.",
-                                    color = VmMuted, modifier = Modifier.padding(20.dp))
-                            }
-                            items(favorites.toList()) { song ->
-                                VmSongRow(song, true,
-                                    { playSongs(favorites.toList(), favorites.indexOf(song)) },
-                                    { openSong(song) }, { toggleFavorite(song) },
-                                    onAddToPlaylist = { askAddToPlaylist(song) })
                             }
                         }
                         else -> Column(Modifier.verticalScroll(rememberScrollState()).padding(22.dp)) {
                             Text("Definições", color = VmWhite, fontSize = 29.sp,
                                 fontWeight = FontWeight.ExtraBold)
                             Spacer(Modifier.height(18.dp))
-                            Text("VistaMusic 0.13.0", color = VmAccent, fontWeight = FontWeight.Bold)
+                            Text("VistaMusic 0.14.0", color = VmAccent, fontWeight = FontWeight.Bold)
                             Spacer(Modifier.height(15.dp))
                             Text("Música, letras e biblioteca sem servidor próprio.",
                                 color = VmMuted)
