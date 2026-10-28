@@ -760,6 +760,27 @@ private fun VistaMusicApp(
                             }
                         }
                         1 -> Column {
+                            playlistAddTarget?.let { target ->
+                                val playlist = playlists.firstOrNull { it.id == target }
+                                if (playlist != null) {
+                                    Row(Modifier.fillMaxWidth().padding(
+                                        start = 20.dp, end = 12.dp, bottom = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically) {
+                                        Column(Modifier.weight(1f)) {
+                                            Text("A adicionar a: ${playlist.name}",
+                                                color = VmAccent, fontWeight = FontWeight.Bold,
+                                                fontSize = 14.sp)
+                                            Text("Pesquisa uma música e usa o menu de opções para a adicionar.",
+                                                color = VmMuted, fontSize = 11.sp)
+                                        }
+                                        TextButton(onClick = {
+                                            selectedPlaylistId = playlist.id
+                                            playlistAddTarget = null
+                                            tab = 2
+                                        }) { Text("Concluir") }
+                                    }
+                                }
+                            }
                             Text("Pesquisar", color = VmWhite, fontSize = 30.sp,
                                 fontWeight = FontWeight.ExtraBold,
                                 modifier = Modifier.padding(start = 20.dp, bottom = 17.dp))
