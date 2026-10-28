@@ -256,7 +256,7 @@ private fun TvMusicCard(title: String, subtitle: String, width: Int = 280, onCli
         .onFocusChanged { focused = it.isFocused }
         .border(if (focused) 3.dp else 1.dp,
             if (focused) VmAccent else Color(0xFF4D354E), RoundedCornerShape(17.dp))
-        .background(Color(if (focused) 0xFF56304B else 0xFF2B1C33), RoundedCornerShape(17.dp))
+        .background(if (focused) Color(0xFF56304B) else Color(0xFF2B1C33), RoundedCornerShape(17.dp))
         .clickable(onClick = onClick)
         .padding(18.dp),
         verticalArrangement = Arrangement.Center) {
