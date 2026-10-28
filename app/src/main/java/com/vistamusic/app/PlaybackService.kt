@@ -1,6 +1,8 @@
 package com.vistamusic.app
 
 import android.app.PendingIntent
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -21,6 +23,7 @@ import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.CommandButton
+import androidx.media3.session.DefaultMediaNotificationProvider
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import androidx.media3.session.SessionCommand
@@ -69,6 +72,20 @@ class PlaybackService : MediaSessionService() {
 
     override fun onCreate() {
         super.onCreate()
+        val notificationManager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+        val channel = NotificationChannel(
+            "vistamusic_playback", "Reprodução de música",
+            NotificationManager.IMPORTANCE_LOW
+        ).apply {
+            description = "Controlos de reprodução do VistaMusic"
+            lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
+            setShowBadge(false)
+        }
+        notificationManager.createNotificationChannel(channel)
+        setMediaNotificationProvider(
+            DefaultMediaNotificationProvider.Builder(this)
+                .setChannelId("vistamusic_playback").build()
+        )
         playback = ExoPlayer.Builder(this).build().apply {
             setAudioAttributes(
                 AudioAttributes.Builder()
@@ -175,6 +192,7 @@ class PlaybackService : MediaSessionService() {
                 }
             })
             .setCustomLayout(listOf(backwardButton, forwardButton))
+            .setMediaButtonPreferences(listOf(backwardButton, forwardButton))
             .build()
     }
 
@@ -235,7 +253,7 @@ class PlaybackService : MediaSessionService() {
     }
 
     private fun loadCurrent() {
-        val song = queue.getOrNull(index) ?: return
+        val requested = queue.getOrNull(index) ?: return
         serial += 1
         val ticket = serial
         changing = true
@@ -243,16 +261,36 @@ class PlaybackService : MediaSessionService() {
         playback.stop()
         playback.clearMediaItems()
         changing = false
+
         playbackScope.launch {
+            // Music-first matching for all old saved songs and catalog-based tracks.
+            val song = when {
+                requested.audio.startsWith("youtube:") ->
+                    runCatching { NativeMusic.musicVersion(requested) }.getOrDefault(requested)
+                requested.audio.startsWith("discover:") -> {
+                    val original = runCatching {
+                        NativeMusic.search(requested.audio.removePrefix("discover:"))
+                    }.getOrDefault(emptyList())
+                    val candidate = original.firstOrNull()
+                    if (candidate != null) {
+                        candidate.copy(
+                            title = if (requested.title.isNotBlank()) requested.title else candidate.title,
+                            artist = if (requested.artist.isNotBlank()) requested.artist else candidate.artist
+                        )
+                    } else requested
+                }
+                else -> requested
+            }
+            if (ticket != serial) return@launch
             val cover = async { artworkBytes(song) }
             val source = runCatching {
                 when {
                     song.audio.startsWith("youtube:") ->
                         NativeMusic.resolve(song.audio.removePrefix("youtube:"))
                     song.audio.startsWith("discover:") -> {
-                        val found = NativeMusic.search(song.audio.removePrefix("discover:"))
-                        val id = found.firstOrNull()?.audio?.removePrefix("youtube:")
-                            ?: error("No stream found")
+                        val results = NativeMusic.search(song.audio.removePrefix("discover:"))
+                        val id = results.firstOrNull()?.audio?.removePrefix("youtube:")
+                            ?: error("Song not found")
                         NativeMusic.resolve(id)
                     }
                     else -> song.audio
