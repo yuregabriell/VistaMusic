@@ -11,6 +11,7 @@ import android.graphics.Paint
 import android.graphics.Shader
 import android.net.Uri
 import android.os.Bundle
+import android.view.KeyEvent
 import androidx.annotation.OptIn
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
@@ -117,6 +118,33 @@ class PlaybackService : MediaSessionService() {
                     return MediaSession.ConnectionResult.AcceptedResultBuilder(mediaSession)
                         .setAvailableSessionCommands(commands)
                         .build()
+                }
+
+                override fun onMediaButtonEvent(
+                    mediaSession: MediaSession,
+                    controllerInfo: MediaSession.ControllerInfo,
+                    intent: Intent
+                ): Boolean {
+                    val event = if (android.os.Build.VERSION.SDK_INT >= 33) {
+                        intent.getParcelableExtra(Intent.EXTRA_KEY_EVENT, KeyEvent::class.java)
+                    } else {
+                        @Suppress("DEPRECATION")
+                        intent.getParcelableExtra<KeyEvent>(Intent.EXTRA_KEY_EVENT)
+                    }
+                    if (event?.action != KeyEvent.ACTION_DOWN || event.repeatCount > 0) {
+                        return false
+                    }
+                    return when (event.keyCode) {
+                        KeyEvent.KEYCODE_MEDIA_NEXT -> {
+                            playNext(false)
+                            true
+                        }
+                        KeyEvent.KEYCODE_MEDIA_PREVIOUS -> {
+                            playPrevious()
+                            true
+                        }
+                        else -> false
+                    }
                 }
 
                 override fun onCustomCommand(
