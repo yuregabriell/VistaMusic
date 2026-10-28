@@ -5,6 +5,7 @@ import android.Manifest
 import android.os.Build
 import android.content.pm.PackageManager
 import androidx.activity.result.contract.ActivityResultContracts
+import android.content.Intent
 import android.content.ComponentName
 import android.content.Context
 import androidx.core.content.ContextCompat
@@ -45,12 +46,20 @@ import kotlinx.coroutines.coroutineScope
 import org.json.JSONArray
 
 class MainActivity : ComponentActivity() {
+    private var openPlayerRequest by mutableStateOf(false)
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (intent.getBooleanExtra("OPEN_CURRENT_PLAYER", false))
+            openPlayerRequest = true
+    }
     private val notificationPermission = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { /* If denied, native controls may still appear in Android System UI. */ }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        openPlayerRequest = intent?.getBooleanExtra("OPEN_CURRENT_PLAYER", false) == true
         if (Build.VERSION.SDK_INT >= 33 &&
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=
                 PackageManager.PERMISSION_GRANTED) {
@@ -64,18 +73,30 @@ class MainActivity : ComponentActivity() {
                     primary = VmAccent, onPrimary = VmBackground,
                     background = VmBackground, surface = VmCard,
                     onSurface = VmWhite, onBackground = VmWhite)
-            ) { VistaMusicApp() }
+            ) { VistaMusicApp(openPlayerRequest) { openPlayerRequest = false } }
         }
     }
 }
 
 @Composable
-private fun VistaMusicApp() {
+private fun VistaMusicApp(
+    openPlayerRequested: Boolean,
+    onPlayerRequestHandled: () -> Unit
+) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val prefs = remember { context.getSharedPreferences("vistamusic", android.content.Context.MODE_PRIVATE) }
     val music = remember { MusicApi() }
     val catalog = remember { LibraryCatalog() }
     val taste = remember { LocalTaste(prefs) }
+    val playlistStore = remember { VmPlaylistStore(context) }
+    var playlists by remember { mutableStateOf(playlistStore.load()) }
+    var selectedPlaylistId by remember { mutableStateOf<String?>(null) }
+    var showCreatePlaylist by remember { mutableStateOf(false) }
+    var editingPlaylistId by remember { mutableStateOf<String?>(null) }
+    var deletingPlaylistId by remember { mutableStateOf<String?>(null) }
+    var addingSong by remember { mutableStateOf<Song?>(null) }
+    var songForNewPlaylist by remember { mutableStateOf<Song?>(null) }
+    var playlistAddTarget by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     var mediaController by remember { mutableStateOf<MediaController?>(null) }
     DisposableEffect(context) {
@@ -182,6 +203,25 @@ private fun VistaMusicApp() {
             for (i in 0 until a.length()) add(a.optString(i))
         }
     }
+    fun updatePlaylists(change: (List<VmPlaylist>) -> List<VmPlaylist>) {
+        val updated = change(playlists)
+        playlists = updated
+        playlistStore.save(updated)
+    }
+    fun addSong(playlistId: String, song: Song) {
+        updatePlaylists { all ->
+            all.map { pl ->
+                if (pl.id != playlistId || pl.tracks.any { it.id == song.id }) pl
+                else pl.copy(tracks = pl.tracks + song)
+            }
+        }
+    }
+    fun askAddToPlaylist(song: Song) {
+        val target = playlistAddTarget
+        if (target != null && playlists.any { it.id == target }) {
+            addSong(target, song)
+        } else addingSong = song
+    }
     fun isFavorite(song: Song) = favorites.any { it.id == song.id }
     fun toggleFavorite(song: Song) {
         if (isFavorite(song)) favorites.removeAll { it.id == song.id } else favorites.add(0, song)
@@ -241,6 +281,7 @@ private fun VistaMusicApp() {
     }
     fun goBack() {
         when {
+            selectedPlaylistId != null -> selectedPlaylistId = null
             lyricsOpen -> lyricsOpen = false
             playerOpen -> playerOpen = false
             artistAllOpen -> artistAllOpen = false
@@ -251,7 +292,7 @@ private fun VistaMusicApp() {
             tab != 0 -> tab = 0
         }
     }
-    BackHandler(enabled = genrePage != null || artistAllOpen || lyricsOpen || playerOpen || songPage != null ||
+    BackHandler(enabled = selectedPlaylistId != null || genrePage != null || artistAllOpen || lyricsOpen || playerOpen || songPage != null ||
         albumPage != null || artistPage != null || tab != 0) { goBack() }
 
     DisposableEffect(player) {
@@ -446,6 +487,14 @@ private fun VistaMusicApp() {
         songDetails = runCatching { catalog.songInfo(song) }.getOrNull()
         songLyrics = runCatching { LyricsApi.find(song.title, song.artist) }.getOrNull()
     }
+    LaunchedEffect(openPlayerRequested, nowPlaying?.id, player) {
+        if (openPlayerRequested && nowPlaying != null && player != null) {
+            playerOpen = true
+            lyricsOpen = false
+            selectedPlaylistId = null
+            onPlayerRequestHandled()
+        }
+    }
     LaunchedEffect(nowPlaying?.id) {
         val song = nowPlaying ?: return@LaunchedEffect
         playerLyrics = null
@@ -474,7 +523,50 @@ private fun VistaMusicApp() {
                     onRepeat = {
                         repeat = !repeat
                         player?.repeatMode = if (repeat) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
-                    })
+                    }, onAddToPlaylist = { askAddToPlaylist(nowPlaying!!) })
+                selectedPlaylistId != null &&
+                    playlists.any { it.id == selectedPlaylistId } -> {
+                    val active = playlists.first { it.id == selectedPlaylistId }
+                    VmPlaylistPage(playlist = active,
+                        onBack = { selectedPlaylistId = null },
+                        onPlay = { at ->
+                            playSongs(active.tracks, at); playerOpen = true
+                        },
+                        onShuffle = {
+                            val randomized = active.tracks.shuffled()
+                            if (randomized.isNotEmpty()) {
+                                playSongs(randomized, 0); playerOpen = true
+                            }
+                        },
+                        onRename = { editingPlaylistId = active.id },
+                        onDelete = { deletingPlaylistId = active.id },
+                        onRemove = { song ->
+                            updatePlaylists { all -> all.map { pl ->
+                                if (pl.id == active.id) pl.copy(
+                                    tracks = pl.tracks.filterNot { it.id == song.id })
+                                else pl
+                            } }
+                        },
+                        onMove = { from, to ->
+                            updatePlaylists { all -> all.map { pl ->
+                                if (pl.id != active.id) pl else {
+                                    val items = pl.tracks.toMutableList()
+                                    if (from in items.indices && to in items.indices) {
+                                        val item = items.removeAt(from); items.add(to, item)
+                                    }
+                                    pl.copy(tracks = items)
+                                }
+                            } }
+                        },
+                        onAddSongs = {
+                            playlistAddTarget = active.id
+                            selectedPlaylistId = null
+                            tab = 1
+                        },
+                        onOpenSong = { openSong(it) },
+                        isFavorite = ::isFavorite,
+                        onFavorite = ::toggleFavorite)
+                }
                 songPage != null -> VmTrackPage(
                     song = songPage!!, info = songDetails, lyrics = songLyrics,
                     onBack = { songPage = null },
@@ -489,11 +581,13 @@ private fun VistaMusicApp() {
                     },
                     onLyrics = { val s = songPage!!; playSongs(listOf(s), 0); playerOpen = true; lyricsOpen = true },
                     isFavorite = isFavorite(songPage!!),
-                    onFavorite = { toggleFavorite(songPage!!) })
+                    onFavorite = { toggleFavorite(songPage!!) },
+                    onAddToPlaylist = { askAddToPlaylist(songPage!!) })
                 artistAllOpen && artistPage != null -> VmAllArtistSongsPage(
                     name = artistPage!!, songs = artistSongs, onBack = { artistAllOpen = false },
                     onPlay = { playSongs(artistSongs, artistSongs.indexOf(it)); playerOpen = true },
-                    onSong = ::openSong, isFavorite = ::isFavorite, onFavorite = ::toggleFavorite)
+                    onSong = ::openSong, isFavorite = ::isFavorite, onFavorite = ::toggleFavorite,
+                    onAddToPlaylist = ::askAddToPlaylist)
                 genrePage != null -> VmGenrePage(
                     genre = genrePage!!, songs = genreSongs, albums = genreAlbums,
                     artistPhotos = genrePhotos, loading = genreLoading,
@@ -502,11 +596,13 @@ private fun VistaMusicApp() {
                     onAlbum = { album -> genrePage = null; openAlbum(album) },
                     onPlay = { song -> playSongs(listOf(song), 0); playerOpen = true },
                     onSong = { song -> genrePage = null; openSong(song) },
-                    isFavorite = ::isFavorite, onFavorite = ::toggleFavorite)
+                    isFavorite = ::isFavorite, onFavorite = ::toggleFavorite,
+                    onAddToPlaylist = ::askAddToPlaylist)
                 albumPage != null -> VmAlbumPage(albumPage!!, albumSongs, albumLoading,
                     onBack = { albumPage = null }, onArtist = ::openArtist,
                     onPlay = { playSongs(albumSongs, albumSongs.indexOf(it)); playerOpen = true },
-                    onSong = ::openSong, isFavorite = ::isFavorite, onFavorite = ::toggleFavorite)
+                    onSong = ::openSong, isFavorite = ::isFavorite, onFavorite = ::toggleFavorite,
+                    onAddToPlaylist = ::askAddToPlaylist)
                 artistPage != null -> VmArtistPage(
                     name = artistPage!!, info = artistInfo, bio = artistBio, songs = artistSongs,
                     topSongs = artistTopSongs, isTopSampled = artistTopFromYoutube,
@@ -520,7 +616,8 @@ private fun VistaMusicApp() {
                         playerOpen = true
                     },
                     onSong = ::openSong, onAlbum = ::openAlbum, onAllSongs = { artistAllOpen = true },
-                    isFavorite = ::isFavorite, onFavorite = ::toggleFavorite)
+                    isFavorite = ::isFavorite, onFavorite = ::toggleFavorite,
+                    onAddToPlaylist = ::askAddToPlaylist)
                 else -> Column(Modifier.fillMaxSize()) {
                     Row(Modifier.fillMaxWidth().padding(start = 19.dp, end = 13.dp, top = 21.dp, bottom = 23.dp),
                         verticalAlignment = Alignment.CenterVertically) {
@@ -546,8 +643,8 @@ private fun VistaMusicApp() {
                             item {
                                 Box(Modifier.fillMaxWidth().padding(horizontal = 17.dp)
                                     .height(187.dp).clip(RoundedCornerShape(24.dp))
-                                    .background(Brush.linearGradient(listOf(Color(0xFF244F44),
-                                        Color(0xFF3E405C), Color(0xFF242C30))))
+                                    .background(Brush.linearGradient(listOf(Color(0xFF632544),
+                                        Color(0xFF43263D), Color(0xFF24202C))))
                                     .clickable {
                                         heroSong?.let { track ->
                                             lastHeroId = track.id
