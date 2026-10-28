@@ -1,9 +1,9 @@
 import SwiftUI
 
-private let background = Color(red: 0.055, green: 0.047, blue: 0.075)
-private let surface = Color(red: 0.13, green: 0.10, blue: 0.15)
+private let background = Color(red: 9/255, green: 11/255, blue: 14/255)
+private let surface = Color(red: 25/255, green: 29/255, blue: 33/255)
 private let pink = Color(red: 1.0, green: 0.31, blue: 0.64)
-private let muted = Color(red: 0.69, green: 0.63, blue: 0.70)
+private let muted = Color(red: 161/255, green: 165/255, blue: 169/255)
 
 private enum MusicTab: String, CaseIterable {
     case home = "Início"
@@ -23,6 +23,10 @@ private struct OpenList: Identifiable {
     let id: String
 }
 
+private struct OpenArtist: Identifiable {
+    let id: String
+}
+
 struct MusicRootView: View {
     @StateObject private var catalog = MusicCatalog()
     @StateObject private var library = MusicLibrary()
@@ -36,6 +40,7 @@ struct MusicRootView: View {
     @State private var pickerTrack: MusicTrack?
     @State private var openedList: OpenList?
     @State private var openedAlbum: MusicAlbum?
+    @State private var openedArtist: OpenArtist?
     @State private var message: String?
 
     var body: some View {
@@ -73,6 +78,13 @@ struct MusicRootView: View {
         .sheet(item: $openedList) { selection in
             PlaylistDetailView(identifier: selection.id, library: library,
                                play: { song, list in play(song, from: list) })
+        }
+        .sheet(item: $openedArtist) { artist in
+            ArtistDetailView(name: artist.id,
+                             play: { song, list in play(song, from: list) },
+                             like: { library.toggleLike($0) },
+                             isLiked: { library.isLiked($0) },
+                             add: { pickerTrack = $0 })
         }
         .sheet(item: $openedAlbum) { album in
             AlbumDetailView(album: album,
@@ -114,8 +126,8 @@ struct MusicRootView: View {
             .padding(.horizontal, 20)
             .padding(.top, 22)
 
-            if let featured = library.recommended(catalog.trending).first ?? catalog.trending.first {
-                Button { play(featured, from: catalog.trending) } label: {
+            if let featured = library.recommended(catalog.youtubeDiscover + catalog.trending).first ?? catalog.youtubeDiscover.first ?? catalog.trending.first {
+                Button { play(featured, from: catalog.youtubeDiscover + catalog.trending) } label: {
                     ZStack(alignment: .bottomLeading) {
                         LinearGradient(colors: [Color(red: 0.48, green: 0.15, blue: 0.36),
                                                 Color(red: 0.22, green: 0.12, blue: 0.29), surface],
@@ -156,7 +168,11 @@ struct MusicRootView: View {
                 trackSection("Ouvidas recentemente", tracks: Array(library.recent.prefix(15)))
             }
 
-            let personal = library.recommended(catalog.trending)
+            if !catalog.youtubeDiscover.isEmpty {
+                trackSection("Em destaque · YouTube Music", tracks: Array(catalog.youtubeDiscover.prefix(24)))
+            }
+
+            let personal = library.recommended(catalog.youtubeDiscover + catalog.trending)
             if !personal.isEmpty {
                 trackSection("Sons para descobrir", tracks: Array(personal.prefix(16)))
             }
@@ -171,7 +187,7 @@ struct MusicRootView: View {
                 trackSection("Faixas completas · Audius", tracks: Array(catalog.trending.prefix(22)))
             }
 
-            Text("Os rankings da Apple são metadados públicos. A reprodução pode usar prévias de 30 segundos; as faixas Audius são reproduzidas integralmente quando disponibilizadas pela fonte.")
+            Text("YouTube Music: pesquisa pública experimental, sem conta. Apple Music: rankings de metadados; reprodução pela fonte compatível encontrada. O acesso às faixas pode variar.")
                 .font(.caption2).foregroundStyle(muted)
                 .padding(.horizontal, 20)
 
@@ -231,7 +247,8 @@ struct MusicRootView: View {
                             TrackRow(track: track, liked: library.isLiked(track),
                                      play: { play(track, from: catalog.searchSongs) },
                                      like: { library.toggleLike(track) },
-                                     add: { pickerTrack = track })
+                                     add: { pickerTrack = track },
+                                     onArtist: { openedArtist = OpenArtist(id: track.artist) })
                         }
                     }.padding(.horizontal, 20)
                 }
@@ -357,6 +374,9 @@ struct MusicRootView: View {
                             Button { pickerTrack = track } label: {
                                 Label("Adicionar à playlist", systemImage: "plus")
                             }
+                            Button { openedArtist = OpenArtist(id: track.artist) } label: {
+                                Label("Ver artista", systemImage: "person.crop.circle")
+                            }
                         }
                     }
                 }
@@ -449,7 +469,7 @@ struct MusicRootView: View {
                 message = "Esta música não tem uma fonte de reprodução disponível. Experimenta outra faixa ou uma versão Audius."
                 return
             }
-            let rest = tracks.filter { $0.id != track.id && $0.audioURL != nil }
+            let rest = tracks.filter { $0.id != track.id && ($0.audioURL != nil || $0.isYouTube) }
             player.play([playable] + rest)
             library.registerPlay(playable)
         }
@@ -482,6 +502,7 @@ private struct TrackRow: View {
     let play: () -> Void
     let like: () -> Void
     let add: () -> Void
+    var onArtist: (() -> Void)? = nil
 
     var body: some View {
         HStack(spacing: 11) {
@@ -503,6 +524,14 @@ private struct TrackRow: View {
             Button(action: add) { Image(systemName: "ellipsis").foregroundStyle(muted) }
         }
         .padding(.vertical, 4)
+        .contextMenu {
+            Button(action: play) { Label("Reproduzir", systemImage: "play.fill") }
+            Button(action: like) { Label(liked ? "Remover curtida" : "Curtir", systemImage: "heart") }
+            Button(action: add) { Label("Adicionar à playlist", systemImage: "plus") }
+            if let onArtist {
+                Button(action: onArtist) { Label("Ver artista", systemImage: "person.crop.circle") }
+            }
+        }
     }
 }
 
@@ -512,6 +541,7 @@ private struct PlayerDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var sliderPosition: Double = 0
     @State private var seeking = false
+    @State private var showLyrics = false
 
     var body: some View {
         VStack(spacing: 24) {
@@ -573,6 +603,13 @@ private struct PlayerDetailView: View {
                     }
                 }
                 .padding(.vertical, 12)
+                Button { showLyrics = true } label: {
+                    Label("Letras", systemImage: "text.quote")
+                        .font(.headline)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(surface, in: RoundedRectangle(cornerRadius: 14))
+                }
                 Text("Controla também a reprodução pelo ecrã bloqueado e pelo Centro de Controlo.")
                     .font(.caption).foregroundStyle(muted).multilineTextAlignment(.center)
             }
@@ -582,6 +619,9 @@ private struct PlayerDetailView: View {
         .padding(.horizontal, 25)
         .background(LinearGradient(colors: [Color(red: 0.28, green: 0.13, blue: 0.24), background],
                                    startPoint: .top, endPoint: .bottom).ignoresSafeArea())
+        .sheet(isPresented: $showLyrics) {
+            MusicLyricsView(player: player)
+        }
     }
 
     private func formatTime(_ duration: Double) -> String {
@@ -772,6 +812,119 @@ private struct AlbumDetailView: View {
         .task(id: album.id) {
             loading = true
             tracks = (try? await MusicAPI.albumTracks(id: album.id)) ?? []
+            loading = false
+        }
+    }
+}
+
+
+// Same content hierarchy as Android: artist header, popular tracks, album discography.
+private struct ArtistDetailView: View {
+    let name: String
+    let play: (MusicTrack, [MusicTrack]) -> Void
+    let like: (MusicTrack) -> Void
+    let isLiked: (MusicTrack) -> Bool
+    let add: (MusicTrack) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var songs: [MusicTrack] = []
+    @State private var albums: [MusicAlbum] = []
+    @State private var selectedAlbum: MusicAlbum?
+    @State private var loading = true
+    @State private var showAll = false
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 22) {
+                    ZStack(alignment: .bottomLeading) {
+                        LinearGradient(colors: [Color(red: 0.37, green: 0.12, blue: 0.26), surface],
+                                       startPoint: .topLeading, endPoint: .bottomTrailing)
+                        HStack {
+                            VStack(alignment: .leading, spacing: 10) {
+                                Text("ARTISTA").font(.caption.bold()).tracking(2)
+                                    .foregroundStyle(muted)
+                                Text(name).font(.system(size: 35, weight: .heavy))
+                                    .lineLimit(3)
+                            }
+                            Spacer()
+                            Image(systemName: "person.crop.circle.fill")
+                                .font(.system(size: 75)).foregroundStyle(pink)
+                        }
+                        .padding(20)
+                    }
+                    .frame(minHeight: 210)
+                    .clipShape(RoundedRectangle(cornerRadius: 17))
+                    if loading { ProgressView("A pesquisar discografia...") }
+
+                    if !songs.isEmpty {
+                        HStack {
+                            Text("Músicas em destaque").font(.title2.bold())
+                            Spacer()
+                            if songs.count > 8 {
+                                Button(showAll ? "Ver menos" : "Ver todas") { showAll.toggle() }
+                                    .font(.subheadline).foregroundStyle(pink)
+                            }
+                        }
+                        ForEach(Array((showAll ? songs : Array(songs.prefix(8))).enumerated()), id: \.element.id) { index, track in
+                            HStack(spacing: 10) {
+                                Text("\(index + 1)").font(.caption).foregroundStyle(muted)
+                                    .frame(width: 18)
+                                TrackRow(track: track, liked: isLiked(track),
+                                         play: { play(track, songs) },
+                                         like: { like(track) }, add: { add(track) })
+                            }
+                        }
+                    }
+                    if !albums.isEmpty {
+                        Text("Álbuns e singles").font(.title2.bold())
+                        Text("Discografia por ano").font(.caption).foregroundStyle(muted)
+                        ForEach(albums.sorted { $0.year > $1.year }) { album in
+                            Button { selectedAlbum = album } label: {
+                                HStack(spacing: 12) {
+                                    TrackArtwork(url: album.artworkURL, size: 68)
+                                    VStack(alignment: .leading, spacing: 5) {
+                                        Text(album.title).font(.subheadline.bold()).lineLimit(2)
+                                        Text("\(album.year) · \(album.artist)")
+                                            .font(.caption).foregroundStyle(muted).lineLimit(1)
+                                    }
+                                    Spacer()
+                                    Image(systemName: "chevron.right").foregroundStyle(muted)
+                                }
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    if !loading && songs.isEmpty && albums.isEmpty {
+                        Text("Não foram encontrados dados deste artista nas fontes disponíveis.")
+                            .font(.subheadline).foregroundStyle(muted)
+                    }
+                    Text("Músicas: pesquisa YouTube Music não oficial. Álbuns: metadados iTunes.")
+                        .font(.caption).foregroundStyle(muted)
+                }
+                .padding(20)
+            }
+            .background(background)
+            .navigationTitle(name)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Fechar") { dismiss() }
+                }
+            }
+            .sheet(item: $selectedAlbum) { album in
+                AlbumDetailView(album: album, play: play, like: like,
+                                isLiked: isLiked, add: add)
+            }
+        }
+        .preferredColorScheme(.dark)
+        .task(id: name) {
+            loading = true
+            async let youtube = try? await YouTubeMusicSearch.shared.search(name + " songs", limit: 35)
+            async let metadata = try? await MusicAPI.searchAlbums(name)
+            songs = (await youtube) ?? []
+            albums = ((await metadata) ?? []).filter {
+                $0.artist.localizedCaseInsensitiveContains(name)
+            }
             loading = false
         }
     }

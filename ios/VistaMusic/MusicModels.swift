@@ -22,7 +22,8 @@ struct MusicTrack: Codable, Hashable, Identifiable {
         return url
     }
 
-    var hasFullTrack: Bool { source == "Audius" }
+    var isYouTube: Bool { audio.hasPrefix("youtube:") }
+    var hasFullTrack: Bool { source == "Audius" || isYouTube }
 }
 
 struct MusicPlaylist: Codable, Identifiable, Hashable {

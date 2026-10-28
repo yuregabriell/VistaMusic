@@ -159,7 +159,21 @@ enum MusicAPI {
     }
 
     static func playable(_ track: MusicTrack) async -> MusicTrack? {
+        if track.isYouTube { return await YouTubeAudio.resolve(track) }
         if track.audioURL != nil { return track }
+
+        // Same primary preference as Android: locate matching SONG in YouTube
+        // Music before falling back to short catalog preview playback.
+        if let tracks = try? await YouTubeMusicSearch.shared.search("\(track.artist) \(track.title)", limit: 12) {
+            let canonicalTitle = track.title.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+            let canonicalArtist = track.artist.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+            if let found = tracks.first(where: {
+                $0.title.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current) == canonicalTitle &&
+                $0.artist.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current).contains(canonicalArtist)
+            }), let playable = await YouTubeAudio.resolve(found) {
+                return playable
+            }
+        }
         guard let matches = try? await searchPreviews("\(track.artist) \(track.title)") else {
             return nil
         }
@@ -176,6 +190,7 @@ enum MusicAPI {
 
 @MainActor
 final class MusicCatalog: ObservableObject {
+    @Published var youtubeDiscover: [MusicTrack] = []
     @Published var trending: [MusicTrack] = []
     @Published var portugalChart: [MusicTrack] = []
     @Published var usaChart: [MusicTrack] = []
@@ -188,13 +203,15 @@ final class MusicCatalog: ObservableObject {
 
     func refresh() async {
         loading = true
+        async let youtube = (try? await YouTubeMusicSearch.shared.search("top popular songs 2026", limit: 50)) ?? []
         async let audius = (try? MusicAPI.trending()) ?? []
         async let portugal = (try? MusicAPI.charts(country: "pt")) ?? []
         async let unitedStates = (try? MusicAPI.charts(country: "us")) ?? []
+        youtubeDiscover = await youtube
         trending = await audius
         portugalChart = await portugal
         usaChart = await unitedStates
-        errorMessage = trending.isEmpty && portugalChart.isEmpty
+        errorMessage = youtubeDiscover.isEmpty && trending.isEmpty && portugalChart.isEmpty
             ? "Não foi possível carregar os catálogos. Verifica a ligação à Internet."
             : nil
         loading = false
@@ -210,10 +227,11 @@ final class MusicCatalog: ObservableObject {
             return
         }
         searching = true
+        async let youtube = (try? await YouTubeMusicSearch.shared.search(query)) ?? []
         async let audius = (try? MusicAPI.searchAudius(query)) ?? []
         async let previews = (try? MusicAPI.searchPreviews(query)) ?? []
         async let albums = (try? MusicAPI.searchAlbums(query)) ?? []
-        let songs = await audius + previews
+        let songs = (await youtube) + (await audius) + (await previews)
         let foundAlbums = await albums
         guard lastQuery == query else { return }
         searchSongs = songs

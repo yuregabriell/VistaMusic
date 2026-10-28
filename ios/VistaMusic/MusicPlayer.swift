@@ -29,13 +29,33 @@ final class MusicPlayer: ObservableObject {
 
     func play(_ tracks: [MusicTrack], index: Int = 0) {
         guard tracks.indices.contains(index) else { return }
-        queue = tracks.filter { $0.audioURL != nil }
+        queue = tracks.filter { $0.audioURL != nil || $0.isYouTube }
         guard let selected = queue.firstIndex(where: { $0.id == tracks[index].id }) else { return }
         begin(at: selected)
     }
 
     private func begin(at index: Int) {
-        guard queue.indices.contains(index), let url = queue[index].audioURL else { return }
+        guard queue.indices.contains(index) else { return }
+        queueIndex = index
+        current = queue[index]
+        if queue[index].isYouTube {
+            let requested = queue[index]
+            isPlaying = false
+            Task { [weak self] in
+                let resolved = await YouTubeAudio.resolve(requested)
+                guard let self, self.queueIndex == index,
+                      self.queue.indices.contains(index),
+                      self.queue[index].id == requested.id else { return }
+                if let resolved {
+                    self.queue[index] = resolved
+                    self.begin(at: index)
+                } else {
+                    self.next()
+                }
+            }
+            return
+        }
+        guard let url = queue[index].audioURL else { next(); return }
         if let observer = timeObserver { player?.removeTimeObserver(observer); timeObserver = nil }
         if let observer = endObserver { NotificationCenter.default.removeObserver(observer); endObserver = nil }
         player?.pause()
