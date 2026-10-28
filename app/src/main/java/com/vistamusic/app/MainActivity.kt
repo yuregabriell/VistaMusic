@@ -646,8 +646,12 @@ private fun VistaMusicApp(
                     onFavorite = { toggleFavorite(songPage!!) },
                     onAddToPlaylist = { askAddToPlaylist(songPage!!) })
                 artistAllOpen && artistPage != null -> VmAllArtistSongsPage(
-                    name = artistPage!!, songs = artistSongs, onBack = { artistAllOpen = false },
+                    name = artistPage!!, songs = artistSongs,
+                    albums = artistAlbums,
+                    onBack = { artistAllOpen = false },
                     onPlay = { playSongs(artistSongs, artistSongs.indexOf(it)); playerOpen = true },
+                    onPlayAlbum = { list, index -> playSongs(list, index); playerOpen = true },
+                    onLoadAlbum = { album -> catalog.albumSongs(album) },
                     onSong = ::openSong, isFavorite = ::isFavorite, onFavorite = ::toggleFavorite,
                     onAddToPlaylist = ::askAddToPlaylist)
                 genrePage != null -> VmGenrePage(
