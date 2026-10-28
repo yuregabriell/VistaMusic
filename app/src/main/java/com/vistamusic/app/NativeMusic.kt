@@ -74,12 +74,12 @@ object NativeMusic {
         val suffix = dash?.groupValues?.getOrNull(2).orEmpty()
         val artist = if (prefix.isNotBlank() && prefix.length < 65 &&
             !prefix.contains("official", true)) prefix
-            else author.removeSuffix(" - Topic").removeSuffix("VEVO").trim()
+            else author.replace(Regex("""(?i)(?:\s*[-–]\s*topic|vevo|official)$"""), "").trim()
         val cleanTitle = (if (suffix.isNotBlank()) suffix else originalTitle)
             .replace(Regex("""\s*\((?:official|music video|visualizer|audio|lyrics|lyric video)[^)]*\)""", RegexOption.IGNORE_CASE), "").trim()
 
         return Song("youtube:$id", cleanTitle.ifBlank { originalTitle },
-            artist.ifBlank { author }, item.thumbnails.firstOrNull()?.url.orEmpty(),
+            artist.ifBlank { author }, "",
             "youtube:$id", "YouTube · experimental")
     }
 
