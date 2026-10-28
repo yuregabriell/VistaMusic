@@ -83,7 +83,7 @@ class LibraryCatalog {
     }
     suspend fun artistSongs(name: String, id: Long): List<Song> = withContext(Dispatchers.IO) {
         runCatching {
-            val query = if (id > 0) "https://itunes.apple.com/lookup?id=$id&entity=song&limit=75&country=PT"
+            val query = if (id > 0) "https://itunes.apple.com/lookup?id=$id&entity=song&limit=200&country=PT"
                 else "https://itunes.apple.com/search?term=${enc(name)}&entity=song&limit=75&country=PT"
             val a = request(query)
             (0 until a.length()).mapNotNull { idx ->
@@ -102,7 +102,7 @@ class LibraryCatalog {
     }
     suspend fun artistAlbums(name: String, id: Long): List<AlbumInfo> = withContext(Dispatchers.IO) {
         runCatching {
-            val url = if (id > 0) "https://itunes.apple.com/lookup?id=$id&entity=album&limit=80&country=PT"
+            val url = if (id > 0) "https://itunes.apple.com/lookup?id=$id&entity=album&limit=200&country=PT"
                 else "https://itunes.apple.com/search?term=${enc(name)}&entity=album&limit=80&country=PT"
             val a = request(url)
             (0 until a.length()).mapNotNull { i ->
