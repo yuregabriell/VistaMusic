@@ -123,6 +123,7 @@ object NativeMusic {
             .replace(Regex("[^\\p{L}\\p{N}]+"), " ").trim()
 
     private fun standard(s: String): String = s.lowercase()
+        .replace(Regex("""(?i)\s*(?:ft\.?|feat\.?|featuring|with)\s+.*$"""), "")
         .replace(Regex("""\([^)]*\)"""), "")
         .replace(Regex("""[^\p{L}\p{N}]+"""), " ").trim()
 
@@ -145,7 +146,8 @@ object NativeMusic {
     suspend fun musicVersion(song: Song): Song = withContext(Dispatchers.IO) {
         if (song.source.contains("YouTube Music") && song.audio.startsWith("youtube:"))
             return@withContext song
-        val q = song.artist + " " + LyricsApi.cleanTitle(song.title, song.artist)
+        val title = standard(LyricsApi.cleanTitle(song.title, song.artist))
+        val q = song.artist + " " + title
         val tracks = runCatching { YouTubeMusicSongs.search(q, 15) }
             .getOrDefault(emptyList())
         tracks.firstOrNull { trackMatch(song, it) } ?: song
