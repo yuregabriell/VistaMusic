@@ -149,7 +149,7 @@ class PlaybackService : MediaSessionService() {
         favoritePrefs = getSharedPreferences("vistamusic", MODE_PRIVATE)
         favoritePrefs.registerOnSharedPreferenceChangeListener(favoritesChangeListener)
         val channel = NotificationChannel(
-            "vistamusic_playback", "Reprodução de música",
+            "vistamusic_media_v15", "Leitor de música VistaMusic",
             NotificationManager.IMPORTANCE_DEFAULT
         ).apply {
             description = "Controlos de reprodução do VistaMusic"
@@ -159,7 +159,7 @@ class PlaybackService : MediaSessionService() {
         notificationManager.createNotificationChannel(channel)
         setMediaNotificationProvider(
             DefaultMediaNotificationProvider.Builder(this)
-                .setChannelId("vistamusic_playback").build()
+                .setChannelId("vistamusic_media_v15").build()
         )
         playback = ExoPlayer.Builder(this).build().apply {
             setAudioAttributes(
