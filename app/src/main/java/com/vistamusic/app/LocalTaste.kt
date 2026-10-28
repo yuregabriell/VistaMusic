@@ -54,7 +54,21 @@ class LocalTaste(private val prefs: SharedPreferences) {
                     it.action == "play" } * 0.2 -
             actions.count { it.song.artist.equals(candidate.artist, true) &&
                     it.action == "skip" } * 1.4).coerceIn(-4.0, 7.0)
-        val genreBias = if (seed?.artist.equals(candidate.artist, true)) 4.0 else 0.0
+        // Genre similarity is computed from the app's curated artist-to-genre map.
+        // No inference is presented as an official music-service genre classification.
+        val candidateGenres = Genres.categories.filter { genre ->
+            Genres.artists(genre.title).any { it.equals(candidate.artist, ignoreCase = true) }
+        }.map { it.title }.toSet()
+        val recentGenres = (favorites + recent).take(18).flatMap { listened ->
+            Genres.categories.filter { genre ->
+                Genres.artists(genre.title).any {
+                    it.equals(listened.artist, ignoreCase = true)
+                }
+            }.map { it.title }
+        }
+        val genreBias = (if (seed?.artist.equals(candidate.artist, true)) 4.0 else 0.0) +
+            candidateGenres.sumOf { genre -> recentGenres.count { it == genre } * 0.32 }
+                .coerceAtMost(3.0)
         val index = popular.indexOfFirst { it.id == candidate.id }
         val chartBonus = if (index >= 0) (2.4 - index.toDouble() / 50).coerceAtLeast(0.4) else 0.0
         val completed = actions.count { it.song.id == candidate.id && it.action == "complete" }
