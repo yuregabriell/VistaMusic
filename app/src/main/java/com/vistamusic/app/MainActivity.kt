@@ -77,6 +77,7 @@ private fun VistaMusicApp() {
     var ytTrendingUs by remember { mutableStateOf<List<Song>>(emptyList()) }
     var artistTopFromYoutube by remember { mutableStateOf(false) }
     var youtubeRadio by remember { mutableStateOf<List<Song>>(emptyList()) }
+    var lastHeroId by remember { mutableStateOf("") }
     var historyVersion by remember { mutableIntStateOf(0) }
     var lastLoggedId by remember { mutableStateOf("") }
     var recommending by remember { mutableStateOf(false) }
@@ -289,13 +290,9 @@ private fun VistaMusicApp() {
     LaunchedEffect(Unit) {
         coroutineScope {
             val u = async { runCatching { NativeMusic.trending("US") }.getOrDefault(emptyList()) }
-            val p = async { runCatching { NativeMusic.trending("PT") }.getOrDefault(emptyList()) }
             val au = async { runCatching { music.popular("us") }.getOrDefault(emptyList()) }
-            val ap = async { runCatching { music.popular("pt") }.getOrDefault(emptyList()) }
-            val ind = async { runCatching { music.trending() }.getOrDefault(emptyList()) }
-            ytTrendingUs = u.await(); ytTrendingPt = p.await()
-            globalHits = au.await(); featured = ap.await()
-            independent = ind.await()
+            ytTrendingUs = u.await()
+            globalHits = au.await()
         }
     }
     LaunchedEffect(nowPlaying?.id, isPlaying) {
@@ -306,11 +303,22 @@ private fun VistaMusicApp() {
             historyVersion++
         }
     }
-    val forYou = remember(historyVersion, ytTrendingPt, ytTrendingUs, youtubeRadio,
-        globalHits, featured, independent, favorites.size) {
+    val forYou = remember(historyVersion, ytTrendingUs, youtubeRadio,
+        globalHits, favorites.size) {
         taste.rankedForYou(
-            (youtubeRadio + ytTrendingPt + ytTrendingUs + globalHits + featured + independent),
+            (youtubeRadio + ytTrendingUs.ifEmpty { globalHits }).distinctBy { it.id },
             favorites.toList())
+    }
+    val recentIds = remember(historyVersion) {
+        taste.recentlyListened().take(12).map { it.id }.toSet()
+    }
+    val heroSong = forYou.firstOrNull {
+        it.id != lastHeroId && it.id !in recentIds && it.id != nowPlaying?.id
+    } ?: forYou.firstOrNull { it.id != lastHeroId } ?: forYou.firstOrNull()
+    val freshYoutube = remember(ytTrendingUs, historyVersion) {
+        ytTrendingUs.drop(8).ifEmpty { ytTrendingUs }
+            .filterNot { it.id in recentIds }
+            .distinctBy { it.id }.take(24)
     }
     LaunchedEffect(historyVersion) {
         val seed = taste.recentlyListened().firstOrNull() ?: favorites.firstOrNull()
@@ -492,34 +500,47 @@ private fun VistaMusicApp() {
                                 fontWeight = FontWeight.ExtraBold)
                             Text("A tua música, do teu jeito.", color = VmMuted, fontSize = 11.sp)
                         }
-                        IconButton(onClick = { tab = 3 }) {
-                            Icon(Icons.Default.Settings, "Definições", tint = VmMuted)
+                        if (tab == 2) {
+                            IconButton(onClick = { tab = 3 }) {
+                                Icon(Icons.Default.Settings, "Definições", tint = VmMuted)
+                            }
                         }
                     }
                     when (tab) {
                         0 -> LazyColumn(contentPadding = PaddingValues(bottom = 26.dp)) {
                             item {
                                 Box(Modifier.fillMaxWidth().padding(horizontal = 17.dp)
-                                    .height(170.dp).clip(RoundedCornerShape(24.dp))
-                                    .background(Brush.linearGradient(listOf(Color(0xFF204A42),
-                                        Color(0xFF363A50), Color(0xFF232C2D))))
+                                    .height(187.dp).clip(RoundedCornerShape(24.dp))
+                                    .background(Brush.linearGradient(listOf(Color(0xFF244F44),
+                                        Color(0xFF3E405C), Color(0xFF242C30))))
                                     .clickable {
-                                        val list = ytTrendingPt.ifEmpty { featured }
-                                        if (list.isNotEmpty()) {
-                                            playSongs(list, 0); playerOpen = true
+                                        heroSong?.let { track ->
+                                            lastHeroId = track.id
+                                            playSongs(listOf(track), 0)
+                                            playerOpen = true
                                         }
                                     }.padding(20.dp)) {
                                     Column(Modifier.align(Alignment.CenterStart)
-                                        .fillMaxWidth(.67f)) {
-                                        Text("DESCOBRE A MÚSICA", color = VmAccent,
-                                            fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                                        Spacer(Modifier.height(12.dp))
-                                        Text("A tua próxima\nfavorita está aqui.",
+                                        .fillMaxWidth(.64f)) {
+                                        Text(if (taste.listenedCount() > 0 || favorites.isNotEmpty())
+                                            "ESCOLHIDO PARA TI" else "DESCOBRE NOVA MÚSICA",
+                                            color = VmAccent, fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold)
+                                        Spacer(Modifier.height(14.dp))
+                                        Text(heroSong?.let {
+                                            LyricsApi.cleanTitle(it.title, it.artist)
+                                        } ?: "O teu próximo favorito",
                                             color = VmWhite, fontWeight = FontWeight.ExtraBold,
-                                            fontSize = 25.sp, lineHeight = 30.sp)
+                                            fontSize = 23.sp, lineHeight = 28.sp, maxLines = 3,
+                                            overflow = TextOverflow.Ellipsis)
+                                        Spacer(Modifier.height(9.dp))
+                                        Text(heroSong?.artist ?: "Ouve e descobre algo novo",
+                                            color = VmWhite.copy(alpha = .84f),
+                                            fontSize = 13.sp, maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis)
                                     }
-                                    (ytTrendingPt.firstOrNull() ?: featured.firstOrNull())?.let { song ->
-                                        VmArt(song.art, Modifier.size(96.dp)
+                                    heroSong?.let { song ->
+                                        VmSongArt(song, Modifier.size(113.dp)
                                             .align(Alignment.CenterEnd))
                                     }
                                 }
@@ -538,7 +559,7 @@ private fun VistaMusicApp() {
                                                 playSongs(forYou, forYou.indexOf(song))
                                                 playerOpen = true
                                             }) {
-                                                VmArt(song.art, Modifier.size(140.dp))
+                                                VmSongArt(song, Modifier.size(140.dp))
                                                 Spacer(Modifier.height(8.dp))
                                                 Text(song.title, color = VmWhite,
                                                     fontSize = 13.sp, fontWeight = FontWeight.Bold,
@@ -553,63 +574,38 @@ private fun VistaMusicApp() {
                             }
                             item {
                                 VmHeading("Em alta agora", Modifier.padding(start = 20.dp, bottom = 6.dp))
-                                Text(if (ytTrendingPt.isNotEmpty())
-                                        "YouTube Charts · Portugal · vídeos em tendência"
-                                    else "Apple Music · Portugal · dados alternativos",
+                                Text("YouTube Charts · Estados Unidos",
                                     color = VmMuted, fontSize = 12.sp,
                                     modifier = Modifier.padding(start = 20.dp, bottom = 13.dp))
                             }
-                            val mainTrending = ytTrendingPt.ifEmpty { featured }
-                            if (mainTrending.isNotEmpty()) {
+                            if (ytTrendingUs.isNotEmpty()) {
                                 item {
                                     LazyRow(contentPadding = PaddingValues(horizontal = 20.dp),
                                         horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                                        items(mainTrending.take(25)) { song ->
+                                        items(ytTrendingUs.take(30)) { song ->
                                             Column(Modifier.width(145.dp).clickable {
                                                 playSongs(listOf(song), 0)
                                                 playerOpen = true
                                             }) {
-                                                VmArt(song.art, Modifier.size(145.dp))
+                                                VmSongArt(song, Modifier.size(145.dp))
                                                 Spacer(Modifier.height(9.dp))
                                                 Text(song.title, color = VmWhite, fontSize = 14.sp,
-                                                    fontWeight = FontWeight.SemiBold, maxLines = 1,
-                                                    overflow = TextOverflow.Ellipsis)
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    maxLines = 1, overflow = TextOverflow.Ellipsis)
                                                 Text(song.artist, color = VmMuted, fontSize = 12.sp,
                                                     maxLines = 1, overflow = TextOverflow.Ellipsis)
                                             }
                                         }
                                     }
                                 }
-                            } else item {
-                                Text("O ranking está temporariamente indisponível.",
-                                    color = VmMuted, modifier = Modifier.padding(20.dp))
+                            } else {
+                                item {
+                                    Text("O YouTube Charts está indisponível neste momento.",
+                                        color = VmMuted, modifier = Modifier.padding(20.dp))
+                                }
                             }
                             item {
-                                Spacer(Modifier.height(26.dp))
-                                VmHeading("Em alta em Portugal", Modifier.padding(start = 20.dp, bottom = 6.dp))
-                                Text(if (ytTrendingUs.isNotEmpty())
-                                        "YouTube Charts · Estados Unidos · tendências"
-                                    else "Apple Music · Estados Unidos · dados alternativos",
-                                    color = VmMuted, fontSize = 12.sp,
-                                    modifier = Modifier.padding(start = 20.dp, bottom = 12.dp))
-                                LazyRow(contentPadding = PaddingValues(horizontal = 20.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(13.dp)) {
-                                    items(ytTrendingUs.ifEmpty { globalHits }.take(20)) { song ->
-                                        Column(Modifier.width(145.dp).clickable {
-                                            playSongs(listOf(song), 0)
-                                            playerOpen = true
-                                        }) {
-                                            VmArt(song.art, Modifier.size(145.dp))
-                                            Spacer(Modifier.height(9.dp))
-                                            Text(song.title, color = VmWhite, fontSize = 13.sp,
-                                                fontWeight = FontWeight.SemiBold, maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis)
-                                            Text(song.artist, color = VmMuted, fontSize = 11.sp,
-                                                maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                        }
-                                    }
-                                }
-                                Spacer(Modifier.height(26.dp))
+                                Spacer(Modifier.height(28.dp))
                                 VmHeading("Explora o teu som", Modifier.padding(start = 20.dp, bottom = 12.dp))
                                 LazyRow(contentPadding = PaddingValues(horizontal = 20.dp),
                                     horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -619,9 +615,12 @@ private fun VistaMusicApp() {
                                     }
                                 }
                                 Spacer(Modifier.height(24.dp))
-                                VmHeading("Novos sons para descobrir", Modifier.padding(start = 20.dp, bottom = 8.dp))
+                                VmHeading("Mais sons para descobrir", Modifier.padding(start = 20.dp, bottom = 6.dp))
+                                Text("Seleção de música do YouTube Charts",
+                                    color = VmMuted, fontSize = 12.sp,
+                                    modifier = Modifier.padding(start = 20.dp, bottom = 12.dp))
                             }
-                            items(independent.take(18)) { song ->
+                            items(freshYoutube) { song ->
                                 VmSongRow(song, isFavorite(song),
                                     { playSongs(listOf(song), 0) },
                                     { openSong(song) }, { toggleFavorite(song) })
@@ -730,7 +729,7 @@ private fun VistaMusicApp() {
                             Text("Definições", color = VmWhite, fontSize = 29.sp,
                                 fontWeight = FontWeight.ExtraBold)
                             Spacer(Modifier.height(18.dp))
-                            Text("VistaMusic 0.6.0", color = VmAccent, fontWeight = FontWeight.Bold)
+                            Text("VistaMusic 0.7.0", color = VmAccent, fontWeight = FontWeight.Bold)
                             Spacer(Modifier.height(15.dp))
                             Text("Música, letras e biblioteca sem servidor próprio.",
                                 color = VmMuted)
@@ -790,7 +789,16 @@ private fun VistaMusicApp() {
                 listOf(Triple("Início", Icons.Default.Home, 0),
                     Triple("Pesquisar", Icons.Default.Search, 1),
                     Triple("Biblioteca", Icons.Default.LibraryMusic, 2)).forEach { (title, icon, idx) ->
-                    NavigationBarItem(selected = tab == idx, onClick = { tab = idx },
+                    NavigationBarItem(selected = tab == idx, onClick = {
+                        tab = idx
+                        genrePage = null
+                        artistPage = null
+                        artistAllOpen = false
+                        albumPage = null
+                        songPage = null
+                        playerOpen = false
+                        lyricsOpen = false
+                    },
                         icon = { Icon(icon, title) }, label = { Text(title) },
                         colors = NavigationBarItemDefaults.colors(
                             indicatorColor = VmAccent, selectedIconColor = VmBackground,
