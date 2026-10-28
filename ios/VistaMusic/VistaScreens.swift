@@ -623,7 +623,7 @@ private struct AddToPlaylistView: View {
             .navigationTitle("Adicionar à playlist")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Fechar", action: dismiss)
                 }
             }
@@ -707,11 +707,11 @@ private struct PlaylistDetailView: View {
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
+                ToolbarItem(placement: .navigationBarLeading) {
                     Button("Fechar") { dismiss() }
                 }
                 if identifier != "liked" {
-                    ToolbarItem(placement: .topBarTrailing) {
+                    ToolbarItem(placement: .navigationBarTrailing) {
                         Menu {
                             Button("Mudar nome") {
                                 renamed = title
