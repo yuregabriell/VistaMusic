@@ -977,6 +977,8 @@ private fun VistaMusicApp(
                             Text("Definições", color = VmWhite, fontSize = 29.sp,
                                 fontWeight = FontWeight.ExtraBold)
                             Spacer(Modifier.height(18.dp))
+                            VistaIdLocalCard()
+                            Spacer(Modifier.height(18.dp))
                             Text("VistaMusic 0.14.0", color = VmAccent, fontWeight = FontWeight.Bold)
                             Spacer(Modifier.height(15.dp))
                             Text("Música, letras e biblioteca sem servidor próprio.",
