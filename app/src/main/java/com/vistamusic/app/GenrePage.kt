@@ -27,7 +27,8 @@ fun VmGenrePage(genre: GenreCategory, songs: List<Song>, albums: List<AlbumInfo>
     artistPhotos: Map<String, String>, loading: Boolean,
     onBack: () -> Unit, onArtist: (String) -> Unit, onAlbum: (AlbumInfo) -> Unit,
     onPlay: (Song) -> Unit, onSong: (Song) -> Unit,
-    isFavorite: (Song) -> Boolean, onFavorite: (Song) -> Unit) {
+    isFavorite: (Song) -> Boolean, onFavorite: (Song) -> Unit,
+    onAddToPlaylist: (Song) -> Unit = {}) {
     val tones = listOf(Color(genre.color1.toInt()), Color(genre.color2.toInt()), VmBackground)
     val featured = songs.take(12)
     Column(Modifier.fillMaxSize().background(VmBackground)) {
@@ -73,7 +74,8 @@ fun VmGenrePage(genre: GenreCategory, songs: List<Song>, albums: List<AlbumInfo>
             }
             items(featured) { song ->
                 VmSongRow(song, isFavorite(song), { onPlay(song) },
-                    { onSong(song) }, { onFavorite(song) })
+                    { onSong(song) }, { onFavorite(song) },
+                    onAddToPlaylist = { onAddToPlaylist(song) })
             }
             item {
                 Spacer(Modifier.height(25.dp))
@@ -113,7 +115,8 @@ fun VmGenrePage(genre: GenreCategory, songs: List<Song>, albums: List<AlbumInfo>
                 }
                 items(songs.drop(12)) { song ->
                     VmSongRow(song, isFavorite(song), { onPlay(song) },
-                        { onSong(song) }, { onFavorite(song) })
+                        { onSong(song) }, { onFavorite(song) },
+                    onAddToPlaylist = { onAddToPlaylist(song) })
                 }
             }
             if (!loading && songs.isEmpty()) item {
