@@ -1,6 +1,13 @@
 package com.vistamusic.app
 
 import android.os.Bundle
+import android.content.ComponentName
+import android.content.Context
+import androidx.core.content.ContextCompat
+import androidx.media3.session.MediaController
+import androidx.media3.session.SessionCommand
+import androidx.media3.session.SessionToken
+import androidx.media3.common.MediaMetadata
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -26,7 +33,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
-import androidx.media3.exoplayer.ExoPlayer
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.async
@@ -57,8 +63,23 @@ private fun VistaMusicApp() {
     val music = remember { MusicApi() }
     val catalog = remember { LibraryCatalog() }
     val taste = remember { LocalTaste(prefs) }
-    val player = remember { ExoPlayer.Builder(context).build() }
     val scope = rememberCoroutineScope()
+    var mediaController by remember { mutableStateOf<MediaController?>(null) }
+    DisposableEffect(context) {
+        val token = SessionToken(context, ComponentName(context, PlaybackService::class.java))
+        val future = MediaController.Builder(context, token).buildAsync()
+        future.addListener({
+            runCatching { future.get() }.onSuccess { mediaController = it }
+        }, ContextCompat.getMainExecutor(context))
+        onDispose {
+            mediaController = null
+            MediaController.releaseFuture(future)
+        }
+    }
+    val player = mediaController
+    fun sendPlaybackCommand(action: String, args: Bundle = Bundle.EMPTY) {
+        player?.sendCustomCommand(SessionCommand(action, Bundle.EMPTY), args)
+    }
 
     var tab by remember { mutableIntStateOf(0) }
     var query by remember { mutableStateOf("") }
@@ -165,87 +186,30 @@ private fun VistaMusicApp() {
     }
     fun playSongs(list: List<Song>, index: Int) {
         if (index !in list.indices) return
-        val song = list[index]
         queue = list
         queueIndex = index
-        nowPlaying = song
+        nowPlaying = list[index]
         lastLoggedId = ""
-        loadingAudio = false
+        loadingAudio = true
         playbackError = ""
-        player.stop(); player.clearMediaItems()
-        if (song.audio.startsWith("youtube:") || song.audio.startsWith("discover:")) {
-            loadingAudio = true
-            scope.launch {
-                try {
-                    val id = if (song.audio.startsWith("youtube:")) {
-                        song.audio.removePrefix("youtube:")
-                    } else {
-                        val term = song.audio.removePrefix("discover:")
-                        val results = NativeMusic.search(term)
-                        val exact = results.firstOrNull() ?: error("Música não encontrada.")
-                        exact.audio.removePrefix("youtube:")
-                    }
-                    val uri = NativeMusic.resolve(id)
-                    if (nowPlaying?.id == song.id) {
-                        player.setMediaItem(MediaItem.fromUri(uri))
-                        player.prepare()
-                        player.play()
-                    }
-                } catch (ex: Exception) {
-                    if (nowPlaying?.id == song.id) playbackError =
-                        "Não foi possível reproduzir esta faixa. Tenta outra música."
-                } finally {
-                    if (nowPlaying?.id == song.id) loadingAudio = false
-                }
-            }
-        } else {
-            player.setMediaItem(MediaItem.fromUri(song.audio))
-            player.prepare()
-            player.play()
-        }
+        val items = JSONArray()
+        list.forEach { items.put(it.toJson()) }
+        sendPlaybackCommand(PlaybackService.PLAY_QUEUE, Bundle().apply {
+            putString(PlaybackService.QUEUE_JSON, items.toString())
+            putInt(PlaybackService.QUEUE_INDEX, index)
+        })
     }
     fun nextSong() {
-        val current = nowPlaying
-        if (current != null && durationMs > 0L && positionMs < durationMs - 15000L) {
-            taste.add(current, "skip")
-            historyVersion++
-        }
-        if (queue.isEmpty()) return
-        val next = if (shuffle && queue.size > 1) {
-            (queue.indices.filter { it != queueIndex }).random()
-        } else if (queueIndex + 1 < queue.size) queueIndex + 1
-        else if (repeat) 0 else -1
-        if (next >= 0) { playSongs(queue, next); return }
-        if (!autoDj || recommending || current == null) return
-        recommending = true
-        scope.launch {
-            try {
-                val chartPool = (ytTrendingPt + ytTrendingUs + globalHits + featured)
-                    .distinctBy { it.id }
-                val related = if (current.audio.startsWith("youtube:"))
-                    runCatching { NativeMusic.relatedTo(current.audio.removePrefix("youtube:")) }
-                        .getOrDefault(emptyList())
-                    else emptyList()
-                val candidates = taste.nextSongs(current, queue.map { it.id }.toSet(),
-                    favorites.toList(), chartPool, catalog)
-                val next = (related + candidates).distinctBy { it.id }
-                    .filterNot { song -> queue.any { it.id == song.id } }
-                if (next.isNotEmpty() && nowPlaying?.id == current.id) {
-                    playSongs(queue + next.take(18), queue.size)
-                }
-            } finally { recommending = false }
-        }
+        sendPlaybackCommand(PlaybackService.NEXT)
     }
     fun previousSong() {
-        if (positionMs > 3500L) { player.seekTo(0); return }
-        if (queueIndex > 0) playSongs(queue, queueIndex - 1)
-        else player.seekTo(0)
+        sendPlaybackCommand(PlaybackService.PREVIOUS)
     }
     fun togglePlayback() {
-        if (loadingAudio) return
-        if (player.mediaItemCount == 0) {
+        val active = player ?: return
+        if (active.mediaItemCount == 0) {
             if (queue.isNotEmpty()) playSongs(queue, queueIndex)
-        } else if (player.isPlaying) player.pause() else player.play()
+        } else if (active.isPlaying) active.pause() else active.play()
     }
     fun goBack() {
         when {
@@ -263,28 +227,53 @@ private fun VistaMusicApp() {
         albumPage != null || artistPage != null || tab != 0) { goBack() }
 
     DisposableEffect(player) {
-        val listener = object : Player.Listener {
-            override fun onIsPlayingChanged(playing: Boolean) { isPlaying = playing }
-            override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
-                playbackError = "O áudio desta faixa não está disponível. Experimenta outra."
-                loadingAudio = false
+        val active = player
+        if (active == null) {
+            onDispose { }
+        } else {
+            fun refreshSong() {
+                val item = active.currentMediaItem
+                val raw = item?.mediaMetadata?.extras
+                    ?.getString(PlaybackService.SONG_JSON).orEmpty()
+                val current = runCatching { Song.fromJson(org.json.JSONObject(raw)) }.getOrNull()
+                if (current != null) {
+                    nowPlaying = current
+                    val matched = queue.indexOfFirst { it.id == current.id }
+                    if (matched >= 0) queueIndex = matched
+                    loadingAudio = false
+                }
             }
-            override fun onPlaybackStateChanged(state: Int) {
-                if (state == Player.STATE_ENDED) {
-                nowPlaying?.let { taste.add(it, "complete"); historyVersion++ }
-                nextSong()
+            val listener = object : Player.Listener {
+                override fun onIsPlayingChanged(playing: Boolean) { isPlaying = playing }
+                override fun onMediaItemTransition(item: MediaItem?, reason: Int) {
+                    refreshSong()
+                }
+                override fun onPlaybackStateChanged(state: Int) {
+                    if (state == Player.STATE_READY) loadingAudio = false
+                    if (state == Player.STATE_ENDED) loadingAudio = false
+                }
+                override fun onPlayerError(
+                    error: androidx.media3.common.PlaybackException
+                ) {
+                    playbackError = "O áudio desta faixa não está disponível."
+                    loadingAudio = false
+                }
             }
-            }
+            active.addListener(listener)
+            isPlaying = active.isPlaying
+            refreshSong()
+            onDispose { active.removeListener(listener) }
         }
-        player.addListener(listener)
-        onDispose { player.removeListener(listener); player.release() }
     }
     LaunchedEffect(player) {
         while (true) {
             delay(360)
-            positionMs = player.currentPosition.coerceAtLeast(0L)
-            durationMs = player.duration.takeIf { it > 0L } ?: 0L
-            bufferedMs = player.bufferedPosition.coerceAtLeast(0L)
+            val active = player
+            if (active != null) {
+                positionMs = active.currentPosition.coerceAtLeast(0L)
+                durationMs = active.duration.takeIf { it > 0L } ?: 0L
+                bufferedMs = active.bufferedPosition.coerceAtLeast(0L)
+            }
         }
     }
     LaunchedEffect(Unit) {
@@ -448,7 +437,7 @@ private fun VistaMusicApp() {
                     favorite = isFavorite(nowPlaying!!), repeat = repeat, shuffle = shuffle,
                     onBack = { playerOpen = false },
                     onPlayPause = ::togglePlayback, onPrev = ::previousSong,
-                    onNext = ::nextSong, onSeek = { player.seekTo(it) },
+                    onNext = ::nextSong, onSeek = { player?.seekTo(it) },
                     onLyrics = { lyricsOpen = true },
                     onArtist = { openArtist(nowPlaying!!.artist) },
                     onSong = { openSong(nowPlaying!!) },
@@ -456,7 +445,7 @@ private fun VistaMusicApp() {
                     onShuffle = { shuffle = !shuffle },
                     onRepeat = {
                         repeat = !repeat
-                        player.repeatMode = if (repeat) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
+                        player?.repeatMode = if (repeat) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
                     })
                 songPage != null -> VmTrackPage(
                     song = songPage!!, info = songDetails, lyrics = songLyrics,
