@@ -44,11 +44,46 @@ fun VmArt(url: String, modifier: Modifier = Modifier, circular: Boolean = false)
 
 @Composable
 fun VmSongArt(song: Song, modifier: Modifier = Modifier) {
-    val artwork by produceState(initialValue = song.art,
+    // This initialization also hides video thumbnails in locally saved favorites
+    // created by older versions of VistaMusic.
+    val initial = if (song.id.startsWith("youtube:")) "" else song.art
+    val artwork by produceState(initialValue = initial,
         key1 = song.id, key2 = song.title, key3 = song.artist) {
         value = AlbumArtwork.resolve(song)
     }
-    VmArt(artwork, modifier)
+    if (artwork.isNotBlank()) {
+        VmArt(artwork, modifier)
+    } else {
+        val shades = listOf(
+            listOf(Color(0xFF386B68), Color(0xFF1C2E40)),
+            listOf(Color(0xFF574A77), Color(0xFF242C42)),
+            listOf(Color(0xFF87565A), Color(0xFF44324A)),
+            listOf(Color(0xFF566642), Color(0xFF233C45))
+        )
+        val colors = shades[(song.id.hashCode().toLong().let {
+            kotlin.math.abs(it) } % shades.size).toInt()]
+        BoxWithConstraints(
+            modifier.clip(RoundedCornerShape(14.dp))
+                .background(Brush.linearGradient(colors)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(Icons.Default.DiscFull, null,
+                tint = VmWhite.copy(alpha = .27f),
+                modifier = Modifier.fillMaxSize(.65f))
+            if (maxWidth >= 100.dp) {
+                Column(Modifier.align(Alignment.BottomStart)
+                    .fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp)) {
+                    Text(LyricsApi.cleanTitle(song.title, song.artist),
+                        color = VmWhite, fontWeight = FontWeight.ExtraBold,
+                        fontSize = 12.sp, maxLines = 2,
+                        overflow = TextOverflow.Ellipsis)
+                    Text(song.artist, color = VmWhite.copy(alpha = .79f),
+                        fontSize = 10.sp, maxLines = 1,
+                        overflow = TextOverflow.Ellipsis)
+                }
+            }
+        }
+    }
 }
 
 @Composable
