@@ -147,6 +147,7 @@ private fun VistaMusicApp(
     var ytTrendingUs by remember { mutableStateOf<List<Song>>(emptyList()) }
     var artistTopFromYoutube by remember { mutableStateOf(false) }
     var youtubeRadio by remember { mutableStateOf<List<Song>>(emptyList()) }
+    var discoveryPool by remember { mutableStateOf<List<Song>>(emptyList()) }
     var lastHeroId by remember { mutableStateOf("") }
     var historyVersion by remember { mutableIntStateOf(0) }
     var lastLoggedId by remember { mutableStateOf("") }
@@ -401,28 +402,57 @@ private fun VistaMusicApp(
     val heroSong = forYou.firstOrNull {
         it.id != lastHeroId && it.id !in recentIds && it.id != nowPlaying?.id
     } ?: forYou.firstOrNull { it.id != lastHeroId } ?: forYou.firstOrNull()
-    val freshYoutube = remember(ytTrendingUs, historyVersion) {
-        ytTrendingUs.drop(8).ifEmpty { ytTrendingUs }
-            .filterNot { it.id in recentIds }
-            .distinctBy { it.id }.take(24)
+    val discoverySuggestions = remember(discoveryPool, youtubeRadio, ytTrendingUs,
+        historyVersion, favorites.size) {
+        val tasteSources = (discoveryPool + youtubeRadio).distinctBy { it.id }
+        val seeds = taste.recentlyListened()
+        val candidates = if (seeds.isEmpty() && favorites.isEmpty()) {
+            ytTrendingUs
+        } else if (tasteSources.size >= 8) {
+            tasteSources
+        } else {
+            tasteSources + ytTrendingUs
+        }
+        taste.discoveryRank(candidates, favorites.toList(), ytTrendingUs).take(32)
     }
-    LaunchedEffect(historyVersion) {
-        val seed = taste.recentlyListened().firstOrNull() ?: favorites.firstOrNull()
-        if (seed != null) {
+    LaunchedEffect(historyVersion, favorites.map { it.id }) {
+        val seeds = (taste.recentlyListened() + favorites.toList())
+            .filter { it.artist.isNotBlank() }
+            .distinctBy { it.artist.lowercase().trim() }
+            .take(3)
+        if (seeds.isEmpty()) {
+            discoveryPool = emptyList()
+            youtubeRadio = emptyList()
+        } else {
+            // Use several real taste signals, not only the most recent artist
+            // or the default US YouTube Charts.
+            delay(500)
+            val genres = taste.preferredGenres(favorites.toList()).take(2)
             coroutineScope {
-                val related = async {
-                    if (seed.audio.startsWith("youtube:"))
+                val tracks = seeds.map { seed -> async {
+                    runCatching { catalog.artistSongs(seed.artist, 0L) }
+                        .getOrDefault(emptyList()).take(35)
+                } }
+                val music = seeds.take(2).map { seed -> async {
+                    runCatching { NativeMusic.search(seed.artist + " songs") }
+                        .getOrDefault(emptyList()).take(16)
+                } }
+                val related = seeds.take(2).filter { it.audio.startsWith("youtube:") }
+                    .map { seed -> async {
                         runCatching {
                             NativeMusic.relatedTo(seed.audio.removePrefix("youtube:"))
-                        }.getOrDefault(emptyList())
-                    else emptyList()
-                }
-                val artistSongs = async {
-                    runCatching { NativeMusic.search(seed.artist + " official audio") }
-                        .getOrDefault(emptyList())
-                }
-                youtubeRadio = (related.await() + artistSongs.await())
-                    .filter { it.id != seed.id }.distinctBy { it.id }.take(28)
+                        }.getOrDefault(emptyList()).take(16)
+                    } }
+                val genreTracks = genres.map { genre -> async {
+                    runCatching { NativeMusic.search(genre + " popular songs") }
+                        .getOrDefault(emptyList()).take(18)
+                } }
+                val byTaste = (music + related + genreTracks + tracks)
+                    .flatMap { it.await() }
+                    .distinctBy { it.title.lowercase().trim() + "|" + it.artist.lowercase().trim() }
+                discoveryPool = byTaste.take(160)
+                youtubeRadio = (music + related).flatMap { it.await() }
+                    .distinctBy { it.id }.take(45)
             }
         }
     }
@@ -814,11 +844,13 @@ private fun VistaMusicApp(
                                 }
                                 Spacer(Modifier.height(24.dp))
                                 VmHeading("Mais sons para descobrir", Modifier.padding(start = 20.dp, bottom = 6.dp))
-                                Text("Seleção de música do YouTube Charts",
+                                Text(if (taste.listenedCount() > 0 || favorites.isNotEmpty())
+                                    "Sugestões baseadas nas tuas músicas, artistas e géneros"
+                                 else "Começa a ouvir músicas para personalizarmos esta seleção",
                                     color = VmMuted, fontSize = 12.sp,
                                     modifier = Modifier.padding(start = 20.dp, bottom = 12.dp))
                             }
-                            items(freshYoutube) { song ->
+                            items(discoverySuggestions) { song ->
                                 VmSongRow(song, isFavorite(song),
                                     { playSongs(listOf(song), 0) },
                                     { openSong(song) }, { toggleFavorite(song) },
