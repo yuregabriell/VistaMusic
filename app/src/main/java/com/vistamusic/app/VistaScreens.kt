@@ -304,21 +304,115 @@ fun VmArtistPage(
 }
 
 @Composable
-fun VmAllArtistSongsPage(name: String, songs: List<Song>, onBack: () -> Unit,
-    onPlay: (Song) -> Unit, onSong: (Song) -> Unit,
-    isFavorite: (Song) -> Boolean, onFavorite: (Song) -> Unit,
-    onAddToPlaylist: (Song) -> Unit = {}) {
+fun VmAllArtistSongsPage(name: String, songs: List<Song>,
+    albums: List<AlbumInfo>, onBack: () -> Unit,
+    onPlay: (Song) -> Unit, onPlayAlbum: (List<Song>, Int) -> Unit,
+    onLoadAlbum: suspend (AlbumInfo) -> List<Song>,
+    onSong: (Song) -> Unit, isFavorite: (Song) -> Boolean,
+    onFavorite: (Song) -> Unit, onAddToPlaylist: (Song) -> Unit = {}) {
+
+    val scope = rememberCoroutineScope()
+    val tracks = remember(name) { mutableStateMapOf<Long, List<Song>>() }
+    val loading = remember(name) { mutableStateMapOf<Long, Boolean>() }
+    var expandedAlbum by remember(name) { mutableStateOf<Long?>(null) }
+    var showIndividual by remember(name) { mutableStateOf(false) }
+    val grouped = remember(albums) {
+        albums.distinctBy { it.id }
+            .sortedWith(compareByDescending<AlbumInfo> { it.year }.thenBy { it.title })
+            .groupBy { it.year.takeIf { y -> y.length == 4 } ?: "Ano desconhecido" }
+    }
     Column(Modifier.fillMaxSize().background(VmBackground)) {
         VmBackBar(name, onBack)
-        LazyColumn(contentPadding = PaddingValues(bottom = 22.dp)) {
+        LazyColumn(contentPadding = PaddingValues(bottom = 32.dp)) {
             item {
-                VmHeading("Todas as músicas", Modifier.padding(start = 20.dp, top = 14.dp, bottom = 14.dp))
-                Text("${songs.size} faixas disponíveis", color = VmMuted,
-                    modifier = Modifier.padding(start = 20.dp, bottom = 12.dp))
+                VmHeading("Discografia por álbum e ano",
+                    Modifier.padding(start = 20.dp, top = 16.dp, bottom = 9.dp))
+                Text("${albums.size} álbuns e singles no catálogo. Abre um álbum para ver as faixas.",
+                    color = VmMuted, fontSize = 13.sp,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 5.dp))
+                Text("A disponibilidade varia por país e serviço; o catálogo pode não incluir todas as gravações.",
+                    color = VmMuted, fontSize = 11.sp,
+                    modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 18.dp))
             }
-            items(songs) { song ->
-                VmSongRow(song, isFavorite(song), { onPlay(song) }, { onSong(song) },
-                    { onFavorite(song) }, onAddToPlaylist = { onAddToPlaylist(song) })
+            grouped.forEach { (year, list) ->
+                item(key = "year_$year") {
+                    Text(year, color = VmWhite, fontSize = 22.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(start = 20.dp, top = 16.dp, bottom = 10.dp))
+                }
+                items(list, key = { "album_${it.id}" }) { album ->
+                    Column {
+                        Row(Modifier.fillMaxWidth().clickable {
+                            if (expandedAlbum == album.id) {
+                                expandedAlbum = null
+                            } else {
+                                expandedAlbum = album.id
+                                if (!tracks.containsKey(album.id) && loading[album.id] != true) {
+                                    loading[album.id] = true
+                                    scope.launch {
+                                        val result = runCatching { onLoadAlbum(album) }
+                                            .getOrDefault(emptyList())
+                                        tracks[album.id] = result
+                                        loading[album.id] = false
+                                    }
+                                }
+                            }
+                        }.padding(horizontal = 20.dp, vertical = 9.dp),
+                            verticalAlignment = Alignment.CenterVertically) {
+                            VmArt(album.art, Modifier.size(72.dp))
+                            Spacer(Modifier.width(13.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(album.title, color = VmWhite,
+                                    fontSize = 15.sp, fontWeight = FontWeight.Bold,
+                                    maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                Text("${album.year.ifBlank { "—" }} · ${album.trackCount} faixas",
+                                    color = VmMuted, fontSize = 12.sp)
+                            }
+                            Icon(if (expandedAlbum == album.id) Icons.Default.ExpandLess
+                                else Icons.Default.ExpandMore, null, tint = VmAccent)
+                        }
+                        if (expandedAlbum == album.id) {
+                            if (loading[album.id] == true) {
+                                Text("A carregar faixas…", color = VmMuted,
+                                    modifier = Modifier.padding(horizontal = 32.dp, vertical = 12.dp))
+                            } else {
+                                val found = tracks[album.id].orEmpty()
+                                if (found.isEmpty()) {
+                                    Text("Sem faixas disponíveis neste catálogo.",
+                                        color = VmMuted,
+                                        modifier = Modifier.padding(horizontal = 32.dp, vertical = 12.dp))
+                                }
+                                found.forEachIndexed { i, song ->
+                                    VmSongRow(song, isFavorite(song),
+                                        { onPlayAlbum(found, i) }, { onSong(song) },
+                                        { onFavorite(song) }, i + 1,
+                                        onAddToPlaylist = { onAddToPlaylist(song) })
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            item(key = "index") {
+                Spacer(Modifier.height(18.dp))
+                Row(Modifier.fillMaxWidth().clickable { showIndividual = !showIndividual }
+                    .padding(horizontal = 20.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Lista de faixas identificadas", color = VmWhite,
+                            fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                        Text("${songs.size} resultados na pesquisa direta (não é o total da discografia)",
+                            color = VmMuted, fontSize = 12.sp)
+                    }
+                    Icon(if (showIndividual) Icons.Default.ExpandLess
+                         else Icons.Default.ExpandMore, null, tint = VmAccent)
+                }
+            }
+            if (showIndividual || albums.isEmpty()) {
+                items(songs, key = { "track_${it.id}" }) { song ->
+                    VmSongRow(song, isFavorite(song), { onPlay(song) }, { onSong(song) },
+                        { onFavorite(song) }, onAddToPlaylist = { onAddToPlaylist(song) })
+                }
             }
         }
     }
