@@ -1,4 +1,4 @@
-# VistaMusic v0.9.0
+# VistaMusic v0.10.0
 
 Aplicação Android experimental de música com interface premium em **Kotlin, Jetpack Compose e Media3**, sem backend próprio nem base de dados central.
 
@@ -24,13 +24,13 @@ Aplicação Android experimental de música com interface premium em **Kotlin, J
 As recomendações são heurísticas e não equivalem ao Spotify ou a modelos de IA externos. Nem todos os artistas, fotos, álbuns e faixas terão metadados completos. As faixas descobertas nas APIs de catálogo podem não ter um stream reproduzível.
 
 ## Build e Release
-O GitHub Actions `.github/workflows/android.yml` publica um APK de depuração em `v0.9.0` quando o build passa. A assinatura debug gerada em cada build **não é estável**: instalar versões subsequentes pode exigir desinstalar a anterior e perder preferências locais.
+O GitHub Actions `.github/workflows/android.yml` publica um APK de depuração em `v0.10.0` quando o build passa. A assinatura debug gerada em cada build **não é estável**: instalar versões subsequentes pode exigir desinstalar a anterior e perder preferências locais.
 
 ## Licença
 GPL-3.0, com dependência GPL-3.0 do NewPipeExtractor. Uso de terceiros sujeito aos respetivos termos e atribuições. Projeto não afiliado a Spotify, Google/YouTube, Apple, Audius ou TheAudioDB.
 
 
-## Novidades v0.9.0
+## Novidades v0.10.0
 
 - YouTube Trending Music, via módulo **YoutubeTrendingMusicExtractor** do NewPipeExtractor, por região PT/US. A secção distingue os YouTube Charts do ranking Apple Music usado como alternativa quando a extração falha. Não é a Home personalizada da conta YouTube Music.
 - Perfil de artista com **até 10 faixas**, unindo pesquisa de vídeos do YouTube ordenada por visualizações da amostra, ranking TheAudioDB e discografia iTunes. Não afirmar que as faixas representam o ranking oficial completo da carreira de cada artista.
@@ -40,7 +40,7 @@ GPL-3.0, com dependência GPL-3.0 do NewPipeExtractor. Uso de terceiros sujeito 
 
 A experiência ainda não usa autenticação do YouTube Music, portanto não consegue importar o feed pessoal ou as recomendações privadas da conta. Os rankings musicais da plataforma e as sugestões pessoais do VistaMusic são conceitos distintos.
 
-## Revisão v0.9.0
+## Revisão v0.10.0
 - Home: um único **Em alta agora · YouTube Charts EUA**, sem duplicação de Portugal; se o chart não estiver disponível, não se fazem afirmações falsas sobre rankings.
 - O destaque da Home escolhe um tema a partir de sinais **locais** (histórico, favoritos e artistas/géneros relacionados); muda a seleção após reproduções, e usa uma alternativa não personalizada quando ainda não há histórico.
 - Mais sons para descobrir: somente faixas obtidas do **YouTube Charts dos EUA**, não da fonte independente Audius. Não é uma lista oficial de lançamentos recentes.
@@ -52,7 +52,7 @@ A experiência ainda não usa autenticação do YouTube Music, portanto não con
 
 Os dados, links e fluxos de vídeo associados a integrações não oficiais podem mudar a qualquer momento. A compilação bem-sucedida não garante que todas as chamadas externas ou todos os audios funcionem num dispositivo real.
 
-## Revisão v0.9.0 — capas musicais
+## Revisão v0.10.0 — capas musicais
 - Miniaturas de vídeos do YouTube deixam de ser usadas como arte de músicas, seja na Home, nas listas, no player ou em favoritos antigos.
 - Para cada música proveniente do YouTube, o VistaMusic normaliza o nome do artista (por exemplo, sufixos VEVO/Official/Topic) e o título, e procura a capa quadrada do álbum no catálogo Deezer.
 - Resultados só são aceites se título e artista corresponderem. O carregamento não exibe a miniatura do vídeo em momento algum.
@@ -61,7 +61,7 @@ Os dados, links e fluxos de vídeo associados a integrações não oficiais pode
 
 O catálogo Deezer é externo e pode impor limites de disponibilidade e utilização da arte. Estas imagens são propriedade dos seus titulares; antes de distribuir o app publicamente ou comercialmente é necessário verificar as permissões e condições aplicáveis.
 
-## v0.9.0 — notificações e ecrã de bloqueio
+## v0.10.0 — notificações e ecrã de bloqueio
 
 - ExoPlayer é agora mantido por `PlaybackService : MediaSessionService`, separado da Activity e gerido pelo Android.
 - Integração Media3 MediaSession + MediaController com notificação automática no Android e controlos em ecrã bloqueado, notificação e painel de multimédia.
@@ -73,3 +73,13 @@ O catálogo Deezer é externo e pode impor limites de disponibilidade e utiliza�
 - Android Foreground Service do tipo `mediaPlayback` com as permissões oficiais requeridas. Notificações multimédia de sessões ativas no Android 13+ são uma categoria isenta da autorização de notificações convencional.
 
 A implantação usa os controlos nativos do Android em vez de replicar a interface e a marca comercial do Spotify. Não há reprodução de conteúdos com DRM contornado; fontes experimentais podem parar de funcionar.
+
+
+## v0.10.0 — notificações e música primeiro
+- Canal de notificações multimédia do Android para reprodução de música; permissão de notificações solicitada no Android 13+.
+- MediaSessionService publica metadados e preferências de botões no painel multimédia e ecrã de bloqueio, sujeito a restrições do fabricante e definições do utilizador.
+- Integração experimental e não autenticada com a pesquisa **Songs** do YouTube Music; procura faixas musicais em vez de videoclipes como primeira opção.
+- Ao reproduzir videoclipes do YouTube ou músicas antigas guardadas, tenta encontrar a faixa áudio equivalente por artista e título.
+- Capas originais do catálogo YouTube Music ou, quando não disponíveis, correspondência com metadados Deezer; caso contrário mantém capa gráfica neutra.
+- Fallback para a extração anterior de áudio quando a pesquisa musical não funciona. Não é uma API oficial e não garante acesso a todo o catálogo ou reprodução sem anúncios.
+- DRM e direitos autorais não são contornados. A disponibilidade das fontes depende dos serviços terceiros.
