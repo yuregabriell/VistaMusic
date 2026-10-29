@@ -1,6 +1,6 @@
 import SwiftUI
 
-private let background = Color(red: 9/255, green: 11/255, blue: 14/255)
+private let vmBackgroundColor = Color(red: 9/255, green: 11/255, blue: 14/255)
 private let surface = Color(red: 25/255, green: 29/255, blue: 33/255)
 private let pink = Color(red: 1.0, green: 0.31, blue: 0.64)
 private let muted = Color(red: 161/255, green: 165/255, blue: 169/255)
@@ -62,7 +62,7 @@ struct MusicRootView: View {
             }
             tabBar
         }
-        .background(background.ignoresSafeArea())
+        .background(vmBackgroundColor.ignoresSafeArea())
         .tint(pink)
         .task { await catalog.refresh() }
         .sheet(isPresented: $showFullPlayer) {
@@ -460,7 +460,7 @@ struct MusicRootView: View {
                 }
             }
         }
-        .background(background)
+        .background(vmBackgroundColor)
     }
 
     private func play(_ track: MusicTrack, from tracks: [MusicTrack]) {
@@ -595,7 +595,7 @@ private struct PlayerDetailView: View {
                         Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
                             .font(.system(size: 30))
                             .frame(width: 78, height: 78)
-                            .foregroundStyle(background)
+                            .foregroundStyle(vmBackgroundColor)
                             .background(.white, in: Circle())
                     }
                     Button { player.next() } label: {
@@ -617,7 +617,7 @@ private struct PlayerDetailView: View {
         }
         .foregroundStyle(.white)
         .padding(.horizontal, 25)
-        .background(LinearGradient(colors: [Color(red: 0.28, green: 0.13, blue: 0.24), background],
+        .background(LinearGradient(colors: [Color(red: 0.28, green: 0.13, blue: 0.24), vmBackgroundColor],
                                    startPoint: .top, endPoint: .bottom).ignoresSafeArea())
         .sheet(isPresented: $showLyrics) {
             MusicLyricsView(player: player)
@@ -681,12 +681,12 @@ private struct PlaylistDetailView: View {
     @State private var renamed = ""
 
     private var playlist: MusicPlaylist? {
-        library.playlists.first(where: { $0.id == identifier })
+        library.playlists.first { $0.id == identifier }
     }
     private var tracks: [MusicTrack] {
         identifier == "liked" ? library.favorites : (playlist?.tracks ?? [])
     }
-    private var title: String {
+    private var playlistTitle: String {
         identifier == "liked" ? "Músicas curtidas" : (playlist?.name ?? "Playlist")
     }
 
@@ -694,77 +694,19 @@ private struct PlaylistDetailView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
-                    ZStack {
-                        LinearGradient(colors: [pink, .purple], startPoint: .topLeading,
-                                       endPoint: .bottomTrailing)
-                        Image(systemName: identifier == "liked" ? "heart.fill" : "music.note.list")
-                            .font(.system(size: 70))
-                    }
-                    .frame(width: 185, height: 185).clipShape(RoundedRectangle(cornerRadius: 18))
-                    .frame(maxWidth: .infinity)
-
-                    Text(title).font(.system(size: 29, weight: .bold))
-                    Text("\(tracks.count) músicas · Biblioteca local")
-                        .font(.subheadline).foregroundStyle(muted)
-
-                    if let first = tracks.first {
-                        Button {
-                            play(first, tracks)
-                        } label: {
-                            Label("Reproduzir", systemImage: "play.fill")
-                                .font(.headline).padding(.vertical, 11).padding(.horizontal, 20)
-                                .background(pink, in: Capsule())
+                    header
+                    VStack(alignment: .leading, spacing: 5) {
+                        ForEach(tracks) { track in
+                            playlistRow(track)
                         }
-                    }
-                    ForEach(tracks) { track in
-                        HStack {
-                            Button { play(track, tracks) } label: {
-                                HStack(spacing: 12) {
-                                    TrackArtwork(url: track.artworkURL, size: 50)
-                                    VStack(alignment: .leading, spacing: 3) {
-                                        Text(track.title).lineLimit(1).font(.subheadline.bold())
-                                        Text(track.artist).foregroundStyle(muted).font(.caption)
-                                    }
-                                }
-                            }.buttonStyle(.plain)
-                            Spacer()
-                            if identifier == "liked" {
-                                Button { library.toggleLike(track) } label: {
-                                    Image(systemName: "heart.slash")
-                                }
-                            } else {
-                                Button { library.remove(track, from: identifier) } label: {
-                                    Image(systemName: "minus.circle")
-                                }
-                            }
-                        }
-                        .padding(.vertical, 5)
                     }
                 }
                 .padding(20)
             }
-            .background(background)
-            .navigationTitle(title)
+            .background(vmBackgroundColor)
+            .navigationTitle(playlistTitle)
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Fechar") { dismiss() }
-                }
-                if identifier != "liked" {
-                    ToolbarItem(placement: .navigationBarTrailing) {
-                        Menu {
-                            Button("Mudar nome") {
-                                renamed = title
-                                showRename = true
-                            }
-                            Button("Eliminar playlist", role: .destructive) {
-                                library.deletePlaylist(id: identifier)
-                                dismiss()
-                            }
-                        } label: { Image(systemName: "ellipsis.circle") }
-                    }
-                }
-            }
+            .toolbar { playlistToolbar }
             .alert("Editar playlist", isPresented: $showRename) {
                 TextField("Nome", text: $renamed)
                 Button("Guardar") { library.renamePlaylist(id: identifier, name: renamed) }
@@ -772,6 +714,79 @@ private struct PlaylistDetailView: View {
             }
         }
         .preferredColorScheme(.dark)
+    }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ZStack {
+                LinearGradient(colors: [pink, .purple], startPoint: .topLeading,
+                               endPoint: .bottomTrailing)
+                Image(systemName: identifier == "liked" ? "heart.fill" : "music.note.list")
+                    .font(.system(size: 70))
+            }
+            .frame(width: 185, height: 185)
+            .clipShape(RoundedRectangle(cornerRadius: 18))
+            .frame(maxWidth: .infinity)
+            Text(playlistTitle).font(.system(size: 29, weight: .bold))
+            Text("\(tracks.count) músicas · Biblioteca local")
+                .font(.subheadline).foregroundStyle(muted)
+            if let first = tracks.first {
+                Button {
+                    play(first, tracks)
+                } label: {
+                    Label("Reproduzir", systemImage: "play.fill")
+                        .font(.headline).padding(.vertical, 11).padding(.horizontal, 20)
+                        .background(pink, in: Capsule())
+                }
+            }
+        }
+    }
+
+    private func playlistRow(_ track: MusicTrack) -> some View {
+        HStack(spacing: 12) {
+            Button { play(track, tracks) } label: {
+                HStack(spacing: 12) {
+                    TrackArtwork(url: track.artworkURL, size: 50)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(track.title).lineLimit(1).font(.subheadline.bold())
+                        Text(track.artist).foregroundStyle(muted).font(.caption)
+                    }
+                }
+            }
+            .buttonStyle(.plain)
+            Spacer()
+            if identifier == "liked" {
+                Button { library.toggleLike(track) } label: {
+                    Image(systemName: "heart.slash")
+                }
+            } else {
+                Button { library.remove(track, from: identifier) } label: {
+                    Image(systemName: "minus.circle")
+                }
+            }
+        }
+        .padding(.vertical, 5)
+    }
+
+    @ToolbarContentBuilder
+    private var playlistToolbar: some ToolbarContent {
+        ToolbarItem(placement: .navigationBarLeading) {
+            Button("Fechar") { dismiss() }
+        }
+        if identifier != "liked" {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Menu {
+                    Button("Mudar nome") {
+                        renamed = playlistTitle
+                        showRename = true
+                    }
+                    Button("Eliminar playlist", role: .destructive) {
+                        library.deletePlaylist(id: identifier)
+                        dismiss()
+                    }
+                } label: { Image(systemName: "ellipsis.circle") }
+            }
+        }
     }
 }
 
@@ -804,7 +819,7 @@ private struct AlbumDetailView: View {
                 }
                 .padding(20)
             }
-            .background(background)
+            .background(vmBackgroundColor)
             .navigationTitle("Álbum")
             .navigationBarTitleDisplayMode(.inline)
         }
@@ -818,7 +833,7 @@ private struct AlbumDetailView: View {
 }
 
 
-// Same content hierarchy as Android: artist header, popular tracks, album discography.
+// Corresponding artist page: header, songs, albums, discography by year.
 private struct ArtistDetailView: View {
     let name: String
     let play: (MusicTrack, [MusicTrack]) -> Void
@@ -836,64 +851,10 @@ private struct ArtistDetailView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
-                    ZStack(alignment: .bottomLeading) {
-                        LinearGradient(colors: [Color(red: 0.37, green: 0.12, blue: 0.26), surface],
-                                       startPoint: .topLeading, endPoint: .bottomTrailing)
-                        HStack {
-                            VStack(alignment: .leading, spacing: 10) {
-                                Text("ARTISTA").font(.caption.bold()).tracking(2)
-                                    .foregroundStyle(muted)
-                                Text(name).font(.system(size: 35, weight: .heavy))
-                                    .lineLimit(3)
-                            }
-                            Spacer()
-                            Image(systemName: "person.crop.circle.fill")
-                                .font(.system(size: 75)).foregroundStyle(pink)
-                        }
-                        .padding(20)
-                    }
-                    .frame(minHeight: 210)
-                    .clipShape(RoundedRectangle(cornerRadius: 17))
+                    artistHeader
                     if loading { ProgressView("A pesquisar discografia...") }
-
-                    if !songs.isEmpty {
-                        HStack {
-                            Text("Músicas em destaque").font(.title2.bold())
-                            Spacer()
-                            if songs.count > 8 {
-                                Button(showAll ? "Ver menos" : "Ver todas") { showAll.toggle() }
-                                    .font(.subheadline).foregroundStyle(pink)
-                            }
-                        }
-                        ForEach(Array((showAll ? songs : Array(songs.prefix(8))).enumerated()), id: \.element.id) { index, track in
-                            HStack(spacing: 10) {
-                                Text("\(index + 1)").font(.caption).foregroundStyle(muted)
-                                    .frame(width: 18)
-                                TrackRow(track: track, liked: isLiked(track),
-                                         play: { play(track, songs) },
-                                         like: { like(track) }, add: { add(track) })
-                            }
-                        }
-                    }
-                    if !albums.isEmpty {
-                        Text("Álbuns e singles").font(.title2.bold())
-                        Text("Discografia por ano").font(.caption).foregroundStyle(muted)
-                        ForEach(albums.sorted { $0.year > $1.year }) { album in
-                            Button { selectedAlbum = album } label: {
-                                HStack(spacing: 12) {
-                                    TrackArtwork(url: album.artworkURL, size: 68)
-                                    VStack(alignment: .leading, spacing: 5) {
-                                        Text(album.title).font(.subheadline.bold()).lineLimit(2)
-                                        Text("\(album.year) · \(album.artist)")
-                                            .font(.caption).foregroundStyle(muted).lineLimit(1)
-                                    }
-                                    Spacer()
-                                    Image(systemName: "chevron.right").foregroundStyle(muted)
-                                }
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
+                    if !songs.isEmpty { songsSection }
+                    if !albums.isEmpty { albumSection }
                     if !loading && songs.isEmpty && albums.isEmpty {
                         Text("Não foram encontrados dados deste artista nas fontes disponíveis.")
                             .font(.subheadline).foregroundStyle(muted)
@@ -903,7 +864,7 @@ private struct ArtistDetailView: View {
                 }
                 .padding(20)
             }
-            .background(background)
+            .background(vmBackgroundColor)
             .navigationTitle(name)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -926,6 +887,69 @@ private struct ArtistDetailView: View {
                 $0.artist.localizedCaseInsensitiveContains(name)
             }
             loading = false
+        }
+    }
+
+    private var artistHeader: some View {
+        HStack(spacing: 20) {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("ARTISTA").font(.caption.bold()).tracking(2).foregroundStyle(muted)
+                Text(name).font(.system(size: 35, weight: .heavy)).lineLimit(3)
+            }
+            Spacer()
+            Image(systemName: "person.crop.circle.fill")
+                .font(.system(size: 75)).foregroundStyle(pink)
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity, minHeight: 210)
+        .background(
+            LinearGradient(colors: [Color(red: 0.37, green: 0.12, blue: 0.26), surface],
+                           startPoint: .topLeading, endPoint: .bottomTrailing),
+            in: RoundedRectangle(cornerRadius: 17)
+        )
+    }
+
+    private var songsSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Músicas em destaque").font(.title2.bold())
+                Spacer()
+                if songs.count > 8 {
+                    Button(showAll ? "Ver menos" : "Ver todas") { showAll.toggle() }
+                        .font(.subheadline).foregroundStyle(pink)
+                }
+            }
+            ForEach(Array((showAll ? songs : Array(songs.prefix(8))).enumerated()),
+                    id: \.element.id) { index, track in
+                HStack(spacing: 10) {
+                    Text("\(index + 1)").font(.caption).foregroundStyle(muted).frame(width: 18)
+                    TrackRow(track: track, liked: isLiked(track),
+                             play: { play(track, songs) },
+                             like: { like(track) }, add: { add(track) })
+                }
+            }
+        }
+    }
+
+    private var albumSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Álbuns e singles").font(.title2.bold())
+            Text("Discografia por ano").font(.caption).foregroundStyle(muted)
+            ForEach(albums.sorted { $0.year > $1.year }) { album in
+                Button { selectedAlbum = album } label: {
+                    HStack(spacing: 12) {
+                        TrackArtwork(url: album.artworkURL, size: 68)
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text(album.title).font(.subheadline.bold()).lineLimit(2)
+                            Text("\(album.year) · \(album.artist)")
+                                .font(.caption).foregroundStyle(muted).lineLimit(1)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right").foregroundStyle(muted)
+                    }
+                }
+                .buttonStyle(.plain)
+            }
         }
     }
 }

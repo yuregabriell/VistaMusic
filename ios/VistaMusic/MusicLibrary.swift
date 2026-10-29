@@ -58,9 +58,10 @@ final class MusicLibrary: ObservableObject {
     func recommended(_ candidates: [MusicTrack]) -> [MusicTrack] {
         let likedArtists = Set(favorites.map { $0.artist.lowercased() })
         let recentlyHeard = Set(recent.prefix(12).map(\.id))
+        let playCounts = counts
         return candidates.sorted {
             func score(_ t: MusicTrack) -> Int {
-                (counts[t.artist, default: 0] * 4) +
+                (playCounts[t.artist, default: 0] * 4) +
                 (likedArtists.contains(t.artist.lowercased()) ? 12 : 0) -
                 (recentlyHeard.contains(t.id) ? 8 : 0)
             }
