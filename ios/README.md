@@ -1,4 +1,4 @@
-# VistaMusic para iPhone — v0.2.0 (experimental)
+# VistaMusic para iPhone — v0.2.1 (experimental)
 
 Port **SwiftUI nativo** do VistaMusic Android, sem modificar a pasta Android `app/`. O projeto usa XcodeGen para gerar o Xcode project.
 
@@ -34,3 +34,14 @@ open VistaMusic.xcodeproj
 Seleciona a tua Apple Team, cria um Bundle ID exclusivo e assina antes de instalar no dispositivo. Na CI, `.github/workflows/ios.yml` compila em macOS e, se todos os passos passarem, disponibiliza um **IPA não assinado** no GitHub Releases. Este ficheiro não é instalável diretamente pelo Safari; precisa de assinatura Apple e distribuição com AltStore/SideStore ou Xcode, consoante o método de instalação.
 
 O projeto não é afiliado a YouTube/Google, Apple, Spotify, Audius, LRCLIB ou aos outros fornecedores. Código experimental sem qualquer garantia de reprodução de conteúdo protegido.
+
+## Instalar no iPhone sem Mac (Windows)
+
+1. Na página de [Releases](https://github.com/yuregabriell/VistaMusic/releases), descarrega `VistaMusic-iOS-v0.2.1-unsigned.ipa` quando o build estiver concluído.
+2. No Windows, instala o [Sideloadly oficial](https://sideloadly.io/). Para reconhecer o iPhone pode precisar do iTunes e iCloud obtidos do site da Apple (não da Microsoft Store).
+3. Liga o iPhone ao Windows com cabo, desbloqueia-o e toca em **Confiar** quando solicitado.
+4. Arrasta o IPA para o Sideloadly, seleciona o iPhone, coloca o teu Apple ID e inicia a instalação. O Sideloadly faz a assinatura temporária com o teu Apple ID gratuito.
+5. No iPhone, ativa **Definições > Privacidade e Segurança > Modo de Programador**, caso seja pedido, e aprova a identidade em **Definições > Geral > VPN e Gestão de Dispositivos** se surgir a opção.
+6. Com conta Apple gratuita, é necessário **renovar a assinatura a cada 7 dias**; o Sideloadly permite refrescar quando o computador estiver acessível.
+
+O IPA na página do GitHub **não instala sozinho ao tocar nele no Safari**. Nunca partilhes o teu Apple ID ou códigos de autenticação comigo. Usa apenas ferramentas de origem verificada.

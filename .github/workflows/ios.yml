@@ -1,4 +1,4 @@
-name: Build iOS preview and publish unsigned IPA
+name: Build VistaMusic iPhone IPA (Windows sideloading)
 
 on:
   push:
@@ -32,7 +32,7 @@ jobs:
           xcodebuild \
             -project ios/VistaMusic.xcodeproj \
             -scheme VistaMusic \
-            -configuration Release \
+            -configuration Debug \
             -sdk iphoneos \
             -destination 'generic/platform=iOS' \
             -derivedDataPath "$PWD/build/ios" \
@@ -42,21 +42,21 @@ jobs:
       - name: Package IPA for local re-signing
         run: |
           mkdir -p release/Payload
-          cp -R build/ios/Build/Products/Release-iphoneos/VistaMusic.app release/Payload/
+          cp -R build/ios/Build/Products/Debug-iphoneos/VistaMusic.app release/Payload/
           cd release
-          zip -qry VistaMusic-iOS-v0.2.0-unsigned.ipa Payload
+          zip -qry VistaMusic-iOS-v0.2.1-unsigned.ipa Payload
           rm -rf Payload
       - uses: actions/upload-artifact@v4
         with:
-          name: VistaMusic-iOS-v0.2.0-unsigned
-          path: release/VistaMusic-iOS-v0.2.0-unsigned.ipa
+          name: VistaMusic-iOS-v0.2.1-unsigned
+          path: release/VistaMusic-iOS-v0.2.1-unsigned.ipa
           if-no-files-found: error
       - name: Publish iOS preview Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ios-v0.2.0-preview
+          tag_name: ios-v0.2.1-preview
           target_commitish: ${{ github.sha }}
-          name: VistaMusic iOS v0.2.0 — Preview
+          name: VistaMusic iOS v0.2.1 — Preview
           prerelease: true
           generate_release_notes: false
           body: |
@@ -64,11 +64,11 @@ jobs:
             (InnerTube sem conta), resolução áudio YouTubeKit, charts Apple PT/EUA,
             faixas Audius, playlists, favoritos, letras LRCLIB e controlos iOS.
 
-            **IPA NÃO ASSINADO:** precisa de assinatura por um Apple ID ou
+            **Instalação sem Mac:** descarregar IPA do Release, usar Sideloadly no Windows e Apple ID gratuito (renovação a cada 7 dias).\n            **IPA NÃO ASSINADO:** precisa de assinatura por um Apple ID ou
             certificado/perfil de desenvolvimento e ferramenta de instalação
             compatível. Não instala diretamente ao tocar no download.
             Sem Vista ID cloud nesta prévia; dados locais separados do Android.
             YouTubeKit e pesquisa YouTube Music são experimentais, sem garantia de acesso ou de funcionamento. O player não é uma API oficial do YouTube.
             Build automatizado não substitui testes em iPhone real.
-          files: release/VistaMusic-iOS-v0.2.0-unsigned.ipa
+          files: release/VistaMusic-iOS-v0.2.1-unsigned.ipa
           overwrite_files: true
