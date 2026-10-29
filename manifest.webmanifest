@@ -1,0 +1,25 @@
+{
+  "name": "VistaMusic",
+  "short_name": "VistaMusic",
+  "description": "Música no teu iPhone: Audius, favoritos, playlists e YouTube com player oficial.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#090b0e",
+  "theme_color": "#090b0e",
+  "lang": "pt-PT",
+  "icons": [
+    {
+      "src": "./icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
